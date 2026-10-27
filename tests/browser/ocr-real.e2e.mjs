@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { writeEvidence } from './audit-artifacts.mjs';
-import { classifyCsp, expectedCsp, knownEvalDiagnostic, allowedRequest } from './helpers/csp-audit.mjs';
+import { classifyCsp, expectedCsp, knownEvalDiagnostic, classifyRequest } from './helpers/csp-audit.mjs';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 // Direct CDP evaluation avoids Playwright's main-world UtilityScript eval probe.
@@ -77,34 +77,25 @@ test.beforeEach(async ({ context, page }, testInfo) => {
   });
   await page.__f02Session.send('Log.enable');
   await context.routeWebSocket('**/*', socket => {
-    external.push({ url: socket.url(), method: 'WebSocket' });
+    external.push({ channel: 'WebSocket' });
     socket.close();
   });
   context.on('requestfailed', request => failedRequests.push({
-    url: request.url(), failure: request.failure(),
+    ...classifyRequest(request.url(), request.method(), !!request.postDataBuffer(), expectedAssets),
   }));
   await context.route('**/*', async route => {
     const request = route.request();
-    const url = new URL(request.url());
-    const headers = await request.allHeaders();
-    requests.push({ url: request.url(), method: request.method() });
-    if (!allowedRequest(request.url(), request.method(), !!request.postDataBuffer())
-      || (!['/', '/favicon.ico'].includes(url.pathname) && !expectedAssets.has(url.pathname))) {
-      rejectedRequests.push({ url: request.url(), method: request.method() });
+    const metadata = classifyRequest(request.url(), request.method(), !!request.postDataBuffer(), expectedAssets);
+    // Classify every attempt before aborting, including external GET/HEAD.
+    requests.push(metadata);
+    if (metadata.external) external.push(metadata);
+    if (metadata.write) writes.push(metadata);
+    if (!metadata.allowed) {
+      rejectedRequests.push(metadata);
       return route.abort('blockedbyclient');
     }
-    if (headers.cookie) cookieHeaders.push({ direction: 'request', url: request.url() });
-    if (request.postDataBuffer()) writes.push({ url: request.url(), method: request.method(), hasBody: true });
-    if (url.protocol === 'http:' || url.protocol === 'https:') {
-      if (url.origin !== 'http://127.0.0.1:3000') {
-        external.push({ url: request.url(), method: request.method() });
-        return route.abort('blockedbyclient');
-      }
-      if (request.method() !== 'GET' && request.method() !== 'HEAD') {
-        writes.push({ url: request.url(), method: request.method() });
-        return route.abort('blockedbyclient');
-      }
-    }
+    const headers = await request.allHeaders();
+    if (headers.cookie) cookieHeaders.push({ direction: 'request' });
     await route.continue();
   });
   context.on('response', response => {

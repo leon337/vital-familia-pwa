@@ -20,6 +20,12 @@ export const scenarios = [
   { name: 'unreadable', title: 'valid PNG with unreadable display falls back without registration', fixture: 'blank-invalid-display.png' },
   { name: 'corrupt', title: 'corrupt PNG is rejected without registration and permits manual entry', fixture: 'corrupt.png' },
 ];
+const requiredSecurityTitles = [
+  'adversarial CSP events never obtain a startup exemption',
+  'requests reject URL exfiltration, bodies, methods and external origins',
+  'every query is rejected even with forged Next RSC and prefetch headers',
+];
+const expectedTestCount = scenarios.length + requiredSecurityTitles.length;
 export const safeTestId = testId => hash(String(testId));
 export const evidenceDir = testId => path.join(root, 'evidence', safeTestId(testId));
 export async function writeEvidence(testInfo, name, bytes, contentType) {
@@ -72,8 +78,11 @@ export async function finalize() {
     if (!list.includes(required)) throw new Error(`Missing evidence: ${required}`);
   }
   const results = JSON.parse(await readFile(`${root}/audit-reporter.json`, 'utf8'));
-  if (results.status !== 'passed' || !Array.isArray(results.errors) || results.errors.length || results.tests.length !== 6 || results.tests.some(t => t.status !== 'passed' || t.sealingError) || new Set(results.tests.map(t => t.testId)).size !== 6) throw new Error('Incomplete or failed gate');
-  for (const title of ['adversarial CSP events never obtain a startup exemption', 'requests reject URL exfiltration, bodies, methods and external origins']) {
+  if (results.status !== 'passed' || !Array.isArray(results.errors) || results.errors.length
+    || !Array.isArray(results.tests) || results.tests.length !== expectedTestCount
+    || results.tests.some(t => t.status !== 'passed' || t.sealingError || typeof t.testId !== 'string' || !t.testId)
+    || new Set(results.tests.map(t => t.testId)).size !== expectedTestCount) throw new Error('Incomplete or failed gate');
+  for (const title of requiredSecurityTitles) {
     if (results.tests.filter(test => test.file === 'csp-audit.e2e.mjs' && test.title.at(-1) === title).length !== 1) throw new Error(`Missing security fixture: ${title}`);
   }
   const matrix = [];

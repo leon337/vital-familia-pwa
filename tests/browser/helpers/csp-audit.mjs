@@ -9,9 +9,9 @@ export function allowedRequest(raw, method, hasBody = false) {
   try {
     const url = new URL(raw);
     return url.origin === 'http://127.0.0.1:3000' && !url.username && !url.password
-      // Only the public demo root may carry Next's bounded cache-buster.
-      // Match the raw query: no duplicates, encoded keys/values or extra fields.
-      && (!url.search || (url.pathname === '/' && /^\?_rsc=[a-z0-9]{1,5}$/.test(url.search)))
+      // Reject every query, including RSC and the empty '?' delimiter.
+      // Headers cannot authorize a query-bearing request.
+      && !raw.includes('?')
       && url.href === raw && !url.hash && !hasBody && ['GET', 'HEAD'].includes(method)
       && (['/', '/favicon.ico'].includes(url.pathname)
         || /^\/(?:_next\/static|ocr)\/[A-Za-z0-9_./-]+$/.test(url.pathname))

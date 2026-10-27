@@ -1,0 +1,73 @@
+name: Vital Família | CD - validar publicação Vercel
+
+on:
+  workflow_run:
+    workflows: ['Vital Família | CI']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+  statuses: read
+
+concurrency:
+  group: vital-familia-cd-main
+  cancel-in-progress: true
+
+jobs:
+  verify-publication:
+    name: Verificar CD na Vercel e acesso público
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Confirmar publicação do commit pela integração GitHub → Vercel
+        if: github.event_name == 'workflow_run'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.payload.workflow_run.head_sha;
+            const {owner, repo} = context.repo;
+            for (let n = 0; n < 24; n++) {
+              const [status, checks] = await Promise.all([
+                github.rest.repos.getCombinedStatusForRef({owner, repo, ref:sha}),
+                github.rest.checks.listForRef({owner, repo, ref:sha, per_page:100})
+              ]);
+              const relevant = status.data.statuses.filter(s => /vercel/i.test(s.context));
+              const checkRuns = checks.data.check_runs.filter(c =>
+                /vercel/i.test(c.name) || /vercel/i.test(c.app?.slug || '')
+              );
+              const passed = relevant.some(s=>s.state==='success') ||
+                checkRuns.some(c=>c.conclusion==='success');
+              if (passed) {
+                core.info('Vercel confirmou implantação do commit ' + sha);
+                return;
+              }
+              const failed = relevant.some(s=>s.state==='failure' || s.state==='error') ||
+                checkRuns.some(c=>c.conclusion==='failure' || c.conclusion==='cancelled');
+              if (failed) throw new Error('Deploy Vercel falhou para '+sha);
+              await new Promise(resolve=>setTimeout(resolve,15000));
+            }
+            throw new Error('Vercel não confirmou implantação deste commit. Verificar ligação GitHub.');
+      - name: Smoke remoto em domínio público (somente dados fictícios)
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://vital-familia-pwa.vercel.app"
+          for i in {1..24}; do
+            code=$(curl -L -sS --max-time 15 -o /tmp/vital-index.html -w '%{http_code}' "$URL/" || true)
+            if [[ "$code" == "200" ]] && grep -q 'AMBIENTE DEMONSTRATIVO' /tmp/vital-index.html; then
+              test "$(curl -L -s --max-time 15 -o /dev/null -w '%{http_code}' "$URL/manifest.webmanifest")" = "200"
+              test "$(curl -L -s --max-time 15 -o /dev/null -w '%{http_code}' "$URL/api/records")" = "503"
+              echo "PASS: demo pública HTTP 200, manifest HTTP 200, dados reais bloqueados HTTP 503"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Publicação Vercel indisponível ou não corresponde ao demo sintético."
+          exit 1

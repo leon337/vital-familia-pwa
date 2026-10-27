@@ -28,9 +28,9 @@ Todas as queries de entrada usam parâmetros. Cada transação usa advisory lock
 
 1. Ambiente protegido GitHub com revisores BRUNO/EMILY; confirmar host/branch pelo painel/API e escopo das credenciais, sem registrar connection string. Variáveis de script não comprovam identidade do destino nem aprovação humana.
 2. Backup anterior criptografado e restore em branch descartável. Dump custom-format por `pg_dump --format=custom --no-owner` em runner protegido; criptografar antes de armazenamento, acesso restrito e expiração. Inclui chave privada: tratar como segredo; não publicar como artifact comum.
-3. `scripts/staging-migrate.sh` só aceita banco fresco e target declaradamente autorizado. `001_schema.sql` é baseline revisado para instalação nova, NÃO upgrade de instalação existente. Se já aplicado, abortar e preparar migração incremental após inventário/revisão; não apagar histórico nem reaplicar baseline.
+3. `scripts/staging-migrate.sh` está deprecated e aborta incondicionalmente; usar exclusivamente o workflow staging guardado de BRUNO, conforme [runbook](ops/NEON_AUTH_ROLLOUT_F02.md). `001_schema.sql` é baseline revisado para instalação nova, NÃO upgrade de instalação existente. Se já aplicado, abortar e preparar migração incremental após inventário/revisão; não apagar histórico nem reaplicar baseline.
 4. Provisionar chave e login mínimo por operação governada separada. Não habilitar flags. Rodar matriz abaixo com fixtures sintéticas, depois rollback das fixtures.
-5. `scripts/staging-recovery.sh` restaura backup somente em destino descartável vazio, role previamente provisionada, transação única e sem --clean. Rotacionar chave restaurada e cookie secret antes de ligar aplicação; validar grants/RLS/contagens/histórico. Falha: manter serviço bloqueado, conservar origem/backup, corrigir em nova branch. Nunca apontar restore diretamente a produção.
+5. `scripts/staging-recovery.sh` está deprecated e aborta incondicionalmente; recovery exige o workflow guardado e destino isolado validado, nunca flags declaradas como prova de identidade. Rotacionar chave restaurada e cookie secret antes de ligar aplicação; validar grants/RLS/contagens/histórico. Falha: manter serviço bloqueado, conservar origem/backup, corrigir em nova branch. Nunca apontar restore diretamente a produção.
 
 ## Evidência e plano A/B/C
 

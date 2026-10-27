@@ -5,7 +5,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   remediate:
@@ -13,11 +12,11 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
       - name: Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: npm
@@ -66,6 +65,4 @@ jobs:
           git diff --cached --quiet && { echo 'Nenhuma alteração'; exit 1; }
           git commit -m "fix: atualizar Zod vulnerável nas dependências Neon Auth"
           git push origin "HEAD:refs/heads/$BRANCH"
-          gh pr create --base main --head "$BRANCH" --title "fix(security): mitigar GHSA-mrhx-c7xc-m3w5 (Zod/Neon)" --body "Correção gerada e validada exclusivamente por runner GitHub Actions; sem build/lint no notebook. Substitui dependências Zod 4.5.4 por 4.6.7 com overrides localizados, congela Neon Auth 0.6.0-beta, atualiza lockfile, audita produção e executa testes, lint, tipos e build. Exige CI do PR antes do merge."
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "Branch criada; MESTRE abre e audita o PR pela integração GitHub: https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}"

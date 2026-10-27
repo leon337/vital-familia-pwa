@@ -40,17 +40,21 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y fonts-liberation
       - name: Build demo and self-hosted OCR assets
         run: npm run build
-      - name: Record mandatory build identity
+      - name: Record mandatory build identity and 42 public files
         run: node tests/browser/audit-artifacts.mjs build
       - name: Exercise real browser UI and Tesseract pixels on localhost
         run: npx playwright test --config tests/browser/playwright.config.mjs
       - name: Preserve allowlisted CSP chunk provenance (including failed tests)
         if: always()
         run: node tests/browser/csp-chunk-provenance.mjs
+      - name: Collect and verify 42 public build files after browser execution
+        run: node tests/browser/audit-artifacts.mjs collect
       - name: Verify mandatory green-run evidence and checksum manifest
+        id: finalize
         run: node tests/browser/audit-artifacts.mjs finalize
       - name: Preserve synthetic fixtures, browser audit and failure traces
         if: always()
+        id: evidence
         uses: actions/upload-artifact@v4
         with:
           name: f02-chromium-ocr-${{ github.run_id }}
@@ -58,5 +62,19 @@ jobs:
             playwright-report/
             test-results/f02/
             test-results/f02-build-receipt.json
+            test-results/f02-build-provenance/
           if-no-files-found: error
           retention-days: 14
+      - name: Bind GitHub artifact receipt to verified manifests
+        if: ${{ success() && steps.finalize.outcome == 'success' && steps.evidence.outcome == 'success' }}
+        env:
+          ARTIFACT_ID: ${{ steps.evidence.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact-digest }}
+          ARTIFACT_URL: ${{ steps.evidence.outputs.artifact-url }}
+        run: |
+          {
+            printf 'F02 public build provenance: 42/42 verified before upload\n\n'
+            printf 'Run: %s; attempt: %s; commit: %s\n\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA"
+            printf 'Artifact ID: %s\n\nSHA256 (GitHub ZIP): %s\n\nURL: %s\n\n' "$ARTIFACT_ID" "$ARTIFACT_DIGEST" "$ARTIFACT_URL"
+            sha256sum test-results/f02/manifest.json test-results/f02-build-receipt.json test-results/f02-build-provenance/receipt.json
+          } >> "$GITHUB_STEP_SUMMARY"

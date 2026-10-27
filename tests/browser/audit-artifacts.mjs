@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, mkdir, writeFile, stat, lstat, copyFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { collectBuildProvenance, verifyBuildProvenance, provenanceRoot } from './build-provenance.mjs';
 const root = 'test-results/f02';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 async function files(dir, hiddenInput = null) {
@@ -69,7 +70,7 @@ export async function buildIdentity() {
   if (!chunks.some(name => name.endsWith('.js'))) throw new Error('Missing built chunks');
   return { head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     buildId: (await readFile('.next/BUILD_ID', 'utf8')).trim(),
-    files: await Promise.all(chunks.map(async name => ({ path: name, sha256: hash(await readFile(name)) }))) };
+    files: await Promise.all(chunks.map(async name => ({ path: name, size: (await lstat(name)).size, sha256: hash(await readFile(name)) }))) };
 }
 export async function receipt() {
   await mkdir('test-results', { recursive: true });
@@ -81,6 +82,7 @@ export async function finalize() {
   }
   const receiptBytes = await readFile('test-results/f02-build-receipt.json');
   if (JSON.stringify(JSON.parse(receiptBytes)) !== JSON.stringify(await buildIdentity())) throw new Error('Build identity drift');
+  const buildProvenance = await verifyBuildProvenance();
   // playwright.config.mjs resolves outputDir ../../test-results/f02 from tests/browser.
   // upload-artifact excludes hidden files; publish only this strictly validated receipt.
   const lastRunPath = `${root}/.last-run.json`;
@@ -94,7 +96,7 @@ export async function finalize() {
   const lastRunAlias = `${root}/last-run.json`;
   const canonicalLastRun = Buffer.from(JSON.stringify({ status: 'passed', failedTests: [] }, null, 2));
   // Validate every entry, including empty directories, before creating the alias.
-  const list = [...await files(root, lastRunPath), ...await files('playwright-report'), 'test-results/f02-build-receipt.json'];
+  const list = [...await files(root, lastRunPath), ...await files('playwright-report'), ...await files(provenanceRoot), 'test-results/f02-build-receipt.json'];
   for (const name of list) {
     if (path.isAbsolute(name) || name.split(/[\\/]/).some(part => part.startsWith('.'))) {
       throw new Error(`Hidden or unsafe artifact path: ${name}`);
@@ -174,13 +176,14 @@ export async function finalize() {
     }
     matrix.push({ scenario: scenario.name, testId: test.testId, receipt: path.join(dir, 'receipt.json'), required });
   }
-  const artifacts = await Promise.all(list.filter(name => !name.endsWith('/manifest.json')).map(async name => {
+  const artifacts = await Promise.all(list.filter(name => name !== `${root}/manifest.json`).map(async name => {
     if (!(await stat(name)).size) throw new Error(`Empty evidence: ${name}`);
     return { path: name, sha256: hash(await readFile(name)) };
   }));
   await writeFile(`${root}/manifest.json`, JSON.stringify({ syntheticOnly: true,
     scope: 'Generated fictional display fixtures and isolated localhost browser; no PHI inputs authorized',
-    buildReceiptSha256: hash(receiptBytes), matrix, artifacts }, null, 2));
+    buildReceiptSha256: hash(receiptBytes), buildProvenance, matrix, artifacts }, null, 2));
 }
 if (process.argv[2] === 'build') await receipt();
+if (process.argv[2] === 'collect') await collectBuildProvenance();
 if (process.argv[2] === 'finalize') await finalize();

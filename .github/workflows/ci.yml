@@ -1,0 +1,43 @@
+name: Vital Família | CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vital-familia-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, tipos, testes, build e dependências
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Dependências determinísticas
+        run: npm ci --no-fund
+      - name: ESLint
+        run: npm run lint
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Vitest
+        run: npm test
+      - name: Build Next.js (somente runner do GitHub)
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          SYNTHETIC_BACKEND_ENABLED: 'false'
+        run: npm run build
+      - name: Auditoria de dependências de produção
+        run: npm audit --omit=dev --audit-level=high

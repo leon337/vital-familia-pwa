@@ -3,7 +3,7 @@ name: F02 | Real Chromium OCR gate
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main, 'feat/f02-photo-capture']
+    branches: [main, 'feat/f02-photo-capture', 'feat/f02-integrated-rc']
 
 permissions:
   contents: read
@@ -38,8 +38,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y fonts-liberation
       - name: Build demo and self-hosted OCR assets
         run: npm run build
+      - name: Record mandatory build identity
+        run: node tests/browser/audit-artifacts.mjs build
       - name: Exercise real browser UI and Tesseract pixels on localhost
         run: npx playwright test --config tests/browser/playwright.config.mjs
+      - name: Verify mandatory green-run evidence and checksum manifest
+        run: node tests/browser/audit-artifacts.mjs finalize
       - name: Preserve synthetic fixtures, browser audit and failure traces
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,5 +52,6 @@ jobs:
           path: |
             playwright-report/
             test-results/f02/
-          if-no-files-found: warn
-          retention-days: 7
+            test-results/f02-build-receipt.json
+          if-no-files-found: error
+          retention-days: 14

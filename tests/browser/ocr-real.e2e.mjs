@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { classifyCsp, knownEvalDiagnostic } from './helpers/csp-audit.mjs';
+import { writeEvidence } from './audit-artifacts.mjs';
+import { classifyCsp, expectedCsp, knownEvalDiagnostic, allowedRequest } from './helpers/csp-audit.mjs';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 // Direct CDP evaluation avoids Playwright's main-world UtilityScript eval probe.
-// CSP remains enforced; only the narrowly classified startup framework event is expected.
+// CSP remains enforced; every CSP violation fails closed.
 async function browserValue(page, fn, arg) {
   const { result, exceptionDetails } = await page.__f02Session.send('Runtime.evaluate', {
     expression: `(${fn.toString()})(${JSON.stringify(arg) ?? 'undefined'})`,
@@ -34,7 +35,7 @@ async function fixture(page, lines, name, testInfo) {
     return canvas.toDataURL('image/png').split(',')[1];
   }, lines);
   const buffer = Buffer.from(base64, 'base64');
-  await testInfo.attach(name, { body: buffer, contentType: 'image/png' });
+  await writeEvidence(testInfo, `${name}.png`, buffer, 'image/png');
   return { name: `${name}.png`, mimeType: 'image/png', buffer };
 }
 
@@ -56,9 +57,20 @@ async function openPhoto(page) {
 // Install restrictions before navigation, including traffic initiated by workers.
 // SW is blocked. Worker response visibility is not used as proof of WASM delivery.
 test.beforeEach(async ({ context, page }, testInfo) => {
-  const external = [], writes = [], assets = [], errors = [], cookieHeaders = [], security = [], failedRequests = [];
+  const external = [], writes = [], assets = [], errors = [], cookieHeaders = [], security = [], failedRequests = [], csp = [], rejectedRequests = [], requests = [];
   // Register audit before setup assertions so setup failures also retain evidence.
-  testInfo._f02 = { external, writes, assets, errors, cookieHeaders, security, failedRequests };
+  testInfo._f02 = { external, writes, assets, errors, cookieHeaders, security, failedRequests, csp, rejectedRequests, requests };
+  const audit = testInfo._f02;
+  const receipt = JSON.parse(await readFile('test-results/f02-build-receipt.json', 'utf8'));
+  const expectedAssets = new Map(receipt.files.map(file => [file.path.replace(/^\.next\/static\//, '/_next/static/').replace(/^public\//, '/'), file.sha256]));
+  const pendingResponses = [];
+  audit.pendingResponses = pendingResponses;
+  audit.buildMismatches = [];
+  await context.exposeBinding('__f02AuditSink', ({ frame }, value) => {
+    if (frame !== page.mainFrame()) throw new Error('Unexpected audit frame');
+    if (value.kind === 'ready') { audit.ready = true; return; }
+    csp.push(Object.freeze({ ...value, sequence: csp.length, phase: audit.baseline ? 'image-handling' : 'navigation' }));
+  });
   page.__f02Session = await context.newCDPSession(page);
   page.__f02Session.on('Log.entryAdded', ({ entry }) => {
     if (entry.source === 'security') security.push(entry);
@@ -75,6 +87,12 @@ test.beforeEach(async ({ context, page }, testInfo) => {
     const request = route.request();
     const url = new URL(request.url());
     const headers = await request.allHeaders();
+    requests.push({ url: request.url(), method: request.method() });
+    if (!allowedRequest(request.url(), request.method(), !!request.postDataBuffer())
+      || (!['/', '/favicon.ico'].includes(url.pathname) && !expectedAssets.has(url.pathname))) {
+      rejectedRequests.push({ url: request.url(), method: request.method() });
+      return route.abort('blockedbyclient');
+    }
     if (headers.cookie) cookieHeaders.push({ direction: 'request', url: request.url() });
     if (request.postDataBuffer()) writes.push({ url: request.url(), method: request.method(), hasBody: true });
     if (url.protocol === 'http:' || url.protocol === 'https:') {
@@ -89,69 +107,105 @@ test.beforeEach(async ({ context, page }, testInfo) => {
     }
     await route.continue();
   });
-  context.on('response', async response => {
+  context.on('response', response => {
+    const task = (async () => {
+    const expectedHash = expectedAssets.get(new URL(response.url()).pathname);
+    if (expectedHash && (response.status() !== 200 || sha256(await response.body()) !== expectedHash)) {
+      audit.buildMismatches.push({ url: response.url(), status: response.status() });
+    }
     if ((await response.headersArray()).some(header => header.name.toLowerCase() === 'set-cookie')) {
       cookieHeaders.push({ direction: 'response', url: response.url() });
     }
     if (new URL(response.url()).pathname.startsWith('/ocr/')) {
       assets.push({ url: response.url(), status: response.status() });
     }
+    })().catch(error => audit.buildMismatches.push({ error: String(error) }));
+    pendingResponses.push(task);
   });
   page.on('pageerror', error => errors.push({ text: String(error), url: undefined }));
   page.on('console', message => {
-    if (message.type() === 'error' || /content.security.policy|permissions.policy|camera/i.test(message.text())) {
+    if (true) {
       errors.push({ text: message.text(), url: message.location().url });
     }
   });
   await page.addInitScript(() => {
-    window.__f02Csp = [];
+    const sink = window.__f02AuditSink;
     document.addEventListener('securitypolicyviolation', event => {
-      window.__f02Csp.push({
+      void sink({ kind: 'csp', isTrusted: event.isTrusted,
         directive: event.violatedDirective, effectiveDirective: event.effectiveDirective,
         blockedURI: event.blockedURI, sourceFile: event.sourceFile,
         lineNumber: event.lineNumber, columnNumber: event.columnNumber,
         sample: event.sample, disposition: event.disposition,
-        originalPolicy: event.originalPolicy, time: performance.now(),
-      });
-    });
+        originalPolicy: event.originalPolicy, time: performance.now() });
+    }, true);
+    void sink({ kind: 'ready' });
   });
   const response = await page.goto('/');
   expect(response?.status()).toBe(200);
+  expect(response.headers()['content-security-policy'], 'Enforced product CSP must remain unchanged').toBe(expectedCsp);
   expect(response.headers()['content-security-policy']).not.toMatch(/(?:^|\s)'unsafe-eval'(?:\s|;|$)/);
   expect(response.headers()['content-security-policy']).toContain("connect-src 'self'");
   expect(response.headers()['content-security-policy']).toContain("worker-src 'self'");
   expect(response.headers()['permissions-policy']).toContain('camera=(self)');
   await expect(page.getByText(/AMBIENTE DEMONSTRATIVO/)).toBeVisible();
+  await expect.poll(() => audit.ready).toBe(true);
+  audit.baseline = Object.freeze({ cspCount: csp.length, securityCount: security.length, errorsCount: errors.length });
+  await writeEvidence(testInfo, 'navigation-baseline.json', Buffer.from(JSON.stringify({ baseline: audit.baseline, csp, security, errors })), 'application/json');
+  // Do not excuse an event even if it matches the previously reported Next chunk.
+  expect.soft(csp, 'Navigation CSP must be empty; cause is unauthenticated').toEqual([]);
 });
 
 test.afterEach(async ({ context, page }, testInfo) => {
   const audit = testInfo._f02;
-  if (!audit) return;
-  const browser = await browserValue(page, async () => ({
-    csp: window.__f02Csp, sessionStorage: Object.keys(sessionStorage),
-    localStorage: Object.keys(localStorage), indexedDB: await indexedDB.databases(),
-  }));
-  const { csp } = browser;
-  const classification = classifyCsp(csp);
-  const unexpectedSecurity = audit.security.filter(entry => !knownEvalDiagnostic(entry.text, entry.url, classification));
-  const unexpectedErrors = audit.errors.filter(message => !knownEvalDiagnostic(message.text, message.url, classification));
-  // Do not use storageState here: its main-world evaluation can initialize the
-  // same UtilityScript eval probe that this audit deliberately avoids.
-  const storage = { cookies: await context.cookies() };
-  await testInfo.attach('browser-audit', {
-    body: Buffer.from(JSON.stringify({ ...audit, ...browser, storage, classification, unexpectedSecurity, unexpectedErrors }, null, 2)), contentType: 'application/json',
-  });
-  expect.soft(storage.cookies, 'No cookies, including HttpOnly/third-party cookies').toEqual([]);
-  expect.soft(browser.localStorage, 'No persistent local data').toEqual([]);
-  expect.soft(browser.indexedDB, 'No persisted OCR/clinical database').toEqual([]);
-  expect.soft(browser.sessionStorage, 'No session persistence').toEqual([]);
-  expect.soft(audit.cookieHeaders, 'No cookie exchange').toEqual([]);
-  expect.soft(audit.external, 'No attempt to contact third parties').toEqual([]);
-  expect.soft(audit.writes, 'No image upload or backend write').toEqual([]);
-  expect.soft(classification.known, 'Exactly one enforced Next startup eval block').toHaveLength(1);
-  expect.soft(classification.unexpected, 'All other CSP violations fail').toEqual([]);
-  expect.soft(unexpectedSecurity, 'No other browser security diagnostics (including workers)').toEqual([]);
-  expect.soft(unexpectedErrors, 'No other console errors, camera/policy warnings or uncaught errors').toEqual([]);
+  let browser, storage, classification, unexpectedSecurity, unexpectedErrors, collectionError;
+  try {
+    if (!audit) throw new Error('Audit setup did not initialize');
+    await page.waitForLoadState('networkidle', { timeout: 10_000 });
+    await Promise.all(audit.pendingResponses ?? []);
+    browser = await browserValue(page, async () => ({
+      sessionStorage: Object.keys(sessionStorage),
+      localStorage: Object.keys(localStorage), indexedDB: await indexedDB.databases(),
+    }));
+    const { csp } = audit;
+    classification = classifyCsp(csp);
+    unexpectedSecurity = audit.security.filter(entry => !knownEvalDiagnostic(entry.text, entry.url, classification));
+    unexpectedErrors = audit.errors.filter(message => !knownEvalDiagnostic(message.text, message.url, classification));
+    storage = { cookies: await context.cookies() };
+    expect.soft(audit.buildMismatches, 'Served assets match this exact build receipt').toEqual([]);
+    expect.soft(audit.ready, 'Collector installed before navigation').toBe(true);
+    expect.soft(csp.every(event => event.isTrusted === true), 'Reject synthetic CSP events').toBe(true);
+    expect.soft(csp.length, 'No extra CSP events during image handling').toBe(audit.baseline?.cspCount);
+    expect.soft(audit.failedRequests, 'No failed requests').toEqual([]);
+    expect.soft(audit.rejectedRequests, 'No unapproved paths, URL values, bodies or methods').toEqual([]);
+    expect.soft(storage.cookies, 'No cookies, including HttpOnly/third-party cookies').toEqual([]);
+    expect.soft(browser.localStorage, 'No persistent local data').toEqual([]);
+    expect.soft(browser.indexedDB, 'No persisted OCR/clinical database').toEqual([]);
+    expect.soft(browser.sessionStorage, 'No session persistence').toEqual([]);
+    expect.soft(audit.cookieHeaders, 'No cookie exchange').toEqual([]);
+    expect.soft(audit.external, 'No attempt to contact third parties').toEqual([]);
+    expect.soft(audit.writes, 'No image upload or backend write').toEqual([]);
+    expect.soft(classification.known, 'No authenticated eval exemption exists').toEqual([]);
+    expect.soft(classification.unexpected, 'All other CSP violations fail').toEqual([]);
+    expect.soft(unexpectedSecurity, 'No other browser security diagnostics (including workers)').toEqual([]);
+    expect.soft(unexpectedErrors, 'No other console errors, camera/policy warnings or uncaught errors').toEqual([]);
+  } catch (error) {
+    collectionError = error;
+    throw error;
+  } finally {
+    // Persist Node-side evidence even if networkidle, CDP, cookies or assertions fail.
+    // An abrupt process termination cannot run finally; the finalizer rejects missing files.
+    try {
+      await writeEvidence(testInfo, 'browser-audit.json', Buffer.from(JSON.stringify({
+        ...audit, pendingResponses: undefined, ...browser, storage, classification,
+        unexpectedSecurity, unexpectedErrors,
+        collectionError: collectionError ? { message: String(collectionError), stack: collectionError.stack } : null,
+        testErrors: testInfo.errors.map(error => ({ message: error.message, stack: error.stack })),
+      }, null, 2)), 'application/json');
+    } catch (persistenceError) {
+      if (collectionError) throw new AggregateError([collectionError, persistenceError], 'Audit collection and persistence failed');
+      throw persistenceError;
+    }
+  }
 });
 
 for (const sample of [
@@ -210,13 +264,11 @@ for (const sample of [
       wasmProof.push({ path: `/ocr/core/${name}`, status: response.status(), sha256: sha256(served), coreVersion: '6.0.0', reference: 'public/ocr/core from scripts/prepare-ocr.mjs' });
       await response.dispose();
     }
-    await testInfo.attach('wasm-http-checksums', {
-      body: Buffer.from(JSON.stringify(wasmProof, null, 2)), contentType: 'application/json',
-    });
+    await writeEvidence(testInfo, 'wasm-http-checksums.json', Buffer.from(JSON.stringify(wasmProof, null, 2)), 'application/json');
     // Successful extraction, edit, confirmation and save above prove OCR continues
-    // after the startup eval was blocked, rather than silently allowing eval.
-    const csp = await browserValue(page, () => window.__f02Csp);
-    expect(classifyCsp(csp).known).toHaveLength(1);
+    // with the enforced CSP, whether or not Next attempts the startup eval.
+    const csp = testInfo._f02.csp;
+    expect(csp.length).toBe(testInfo._f02.baseline.cspCount);
     expect(classifyCsp(csp).unexpected).toEqual([]);
   });
 }
@@ -236,13 +288,15 @@ test('valid PNG with unreadable display falls back without registration', async 
   expect(await historyCount(page)).toBe(initial);
 });
 
-test('corrupt PNG is rejected without registration and permits manual entry', async ({ page }) => {
+test('corrupt PNG is rejected without registration and permits manual entry', async ({ page }, testInfo) => {
   const initial = await historyCount(page);
   await openPhoto(page);
   const camera = photo(page).getByLabel('Fotografar visor sintético');
   await expect(camera).toHaveAttribute('capture', 'environment');
   await expect(camera).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp');
-  await camera.setInputFiles({ name: 'corrupt.png', mimeType: 'image/png', buffer: Buffer.from('synthetic invalid PNG') });
+  const corrupt = Buffer.from('synthetic invalid PNG');
+  await writeEvidence(testInfo, 'corrupt.png', corrupt, 'image/png');
+  await camera.setInputFiles({ name: 'corrupt.png', mimeType: 'image/png', buffer: corrupt });
   await expect(photo(page).getByRole('status')).toContainText('Não foi possível ler a imagem.');
   await expect(photo(page).getByRole('heading', { name: 'Revisar valores fictícios' })).toHaveCount(0);
   await photo(page).getByRole('button', { name: 'Não consegui ler: preencher manualmente' }).click();

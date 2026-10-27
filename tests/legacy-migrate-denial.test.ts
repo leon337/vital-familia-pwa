@@ -23,6 +23,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS !== 'true')('legacy staging entrypoin
         const result = spawnSync('/bin/bash', ['--noprofile', '--norc', script, script], {
           // Do not inherit credentials or BASH_ENV from the runner. No external commands available.
           env: {
+            NODE_ENV: 'test',
             PATH: '/nonexistent',
             ...(databaseUrl === undefined ? {} : {DATABASE_URL: databaseUrl}),
             GOVERNED_TARGET: 'br-polished-recipe-b6yh4cw2',

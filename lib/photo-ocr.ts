@@ -21,8 +21,8 @@ export async function readPhoto(file:File,signal:AbortSignal,onPreview:(url:stri
   const blob=await new Promise<Blob>((resolve,reject)=>canvas!.toBlob(b=>b?resolve(b):reject(new Error('Imagem indisponível.')),'image/png'));
   check();onPreview(URL.createObjectURL(blob));
   const modulePath='/ocr/tesseract.esm.min.js';
-  const module=await import(/* webpackIgnore: true */ modulePath) as {default?:LocalOCR}&Partial<LocalOCR>;
-  const createWorker=module.default?.createWorker??module.createWorker;
+  const ocrModule=await import(/* webpackIgnore: true */ modulePath) as {default?:LocalOCR}&Partial<LocalOCR>;
+  const createWorker=ocrModule.default?.createWorker??ocrModule.createWorker;
   if(!createWorker)throw new Error('OCR indisponível.');check();
   worker=await createWorker('eng',1,{workerPath:'/ocr/worker.min.js',corePath:'/ocr/core',langPath:'/ocr/lang',workerBlobURL:false,cacheMethod:'none',gzip:true,logger:()=>{},errorHandler:()=>{}});
   check();const result=await worker.recognize(canvas);check();

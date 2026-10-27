@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
+import Image from 'next/image';
 import {parseDisplay,type PhotoReading} from '@/lib/photo-parser';
 import {measurementSchema,type Measurement} from '@/lib/domain';
 import {readPhoto} from '@/lib/photo-ocr';
@@ -34,7 +35,7 @@ export default function PhotoCapture({onSave}:{onSave:(record:Measurement)=>void
  <div className="photo-actions"><label className="capture-button">Abrir câmera<input aria-label="Fotografar visor sintético" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={!synthetic||busy} onChange={e=>{void capture(e.target.files?.[0]);e.target.value='';}}/></label><label className="capture-button">Escolher da galeria<input aria-label="Escolher foto sintética da galeria" type="file" accept="image/jpeg,image/png,image/webp" disabled={!synthetic||busy} onChange={e=>{void capture(e.target.files?.[0]);e.target.value='';}}/></label></div>
  <p>Enquadre somente o visor, com unidade e rótulos SYS/DIA/PUL visíveis, sem reflexos. JPEG, PNG ou WebP, até 8 MB e 24 megapixels. Se a câmera não abrir, use a galeria.</p>
  <p role="status" aria-live="polite" aria-busy={busy}>{status}</p>
- {preview&&<figure className="photo-preview">{/* Local metadata-free blob, never sent to an image optimizer. */}{/* eslint-disable-next-line @next/next/no-img-element */}<img src={preview} alt="Visor sintético selecionado para conferir os valores"/><figcaption>Confira os números e as unidades diretamente nesta imagem.</figcaption></figure>}
+ {preview&&<figure className="photo-preview">{/* Local metadata-free blob, never sent to an image optimizer. */}<Image unoptimized width={1800} height={1800} style={{width:'auto',height:'auto'}} src={preview} alt="Visor sintético selecionado para conferir os valores"/><figcaption>Confira os números e as unidades diretamente nesta imagem.</figcaption></figure>}
  {(busy||preview)&&<button type="button" onClick={()=>{discard();setStatus('Foto descartada.');}}>Cancelar e descartar foto</button>}
  <button className="text-button" disabled={!synthetic||busy} onClick={()=>{setReading(undefined);setConfirmed(false);setManual(true);setStatus('Entrada manual: transcreva apenas os valores visíveis.');}}>Não consegui ler: preencher manualmente</button>
  {(reading||manual)&&!busy&&<form action={save} onChange={e=>{if((e.target as HTMLInputElement).type!=='checkbox')setConfirmed(false);}} key={manual?'manual':JSON.stringify(reading)}><h3>Revisar valores fictícios</h3><p>{manual?'Entrada manual':'Leitura extraída — ainda não registrada'}</p>

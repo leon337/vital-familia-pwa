@@ -9,9 +9,25 @@ export function allowedRequest(raw, method, hasBody = false) {
   try {
     const url = new URL(raw);
     return url.origin === 'http://127.0.0.1:3000' && !url.username && !url.password
-      && !url.search && !url.hash && !hasBody && ['GET', 'HEAD'].includes(method)
+      // Only the public demo root may carry Next's bounded cache-buster.
+      // Match the raw query: no duplicates, encoded keys/values or extra fields.
+      && (!url.search || (url.pathname === '/' && /^\?_rsc=[a-z0-9]{1,5}$/.test(url.search)))
+      && url.href === raw && !url.hash && !hasBody && ['GET', 'HEAD'].includes(method)
       && (['/', '/favicon.ico'].includes(url.pathname)
         || /^\/(?:_next\/static|ocr)\/[A-Za-z0-9_./-]+$/.test(url.pathname))
       && !url.pathname.includes('..');
   } catch { return false; }
+}
+
+// Deliberately omit URLs, origins, paths, query values, bodies and free-form errors.
+export function classifyRequest(raw, method, hasBody = false, expectedAssets) {
+  let url;
+  try { url = new URL(raw); } catch { /* Invalid URLs fail closed. */ }
+  const external = !!url && url.origin !== 'http://127.0.0.1:3000';
+  const write = hasBody || !['GET', 'HEAD'].includes(method);
+  const allowed = allowedRequest(raw, method, hasBody)
+    && (['/', '/favicon.ico'].includes(url?.pathname) || expectedAssets?.has(url?.pathname) === true);
+  return Object.freeze({ allowed, external, write, hasBody,
+    method: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'CONNECT', 'TRACE'].includes(method) ? method : 'OTHER',
+    hasQuery: !!url?.search, invalidUrl: !url });
 }

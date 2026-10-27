@@ -112,6 +112,12 @@ export async function finalize() {
     const baseline = JSON.parse(await readFile(path.join(dir, 'navigation-baseline.json'), 'utf8'));
     if (!baseline.baseline || baseline.csp.length || audit.csp.length
       || JSON.stringify(baseline.baseline) !== JSON.stringify(audit.baseline)) throw new Error('Invalid CSP evidence');
+    if (JSON.stringify(baseline.isolationBefore) !== JSON.stringify(audit.isolationBefore)) throw new Error('Isolation baseline mismatch');
+    for (const snapshot of [baseline.isolationBefore, audit.isolationAfter]) {
+      if (!snapshot || snapshot.serviceWorkerController !== null
+        || !Array.isArray(snapshot.serviceWorkerRegistrations) || snapshot.serviceWorkerRegistrations.length
+        || !Array.isArray(snapshot.cacheStorage) || snapshot.cacheStorage.length) throw new Error('Invalid SW/CacheStorage isolation evidence');
+    }
     for (const key of ['buildMismatches', 'failedRequests', 'rejectedRequests', 'cookieHeaders', 'external', 'writes', 'unexpectedSecurity', 'unexpectedErrors', 'localStorage', 'indexedDB', 'sessionStorage']) {
       if (!Array.isArray(audit[key]) || audit[key].length) throw new Error(`Invalid audit: ${scenario.name}/${key}`);
     }

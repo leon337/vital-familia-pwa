@@ -41,10 +41,13 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y postgresql-client-17
+          sudo apt-get install -y ca-certificates postgresql-client-17
+          sudo update-ca-certificates
           echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
       - name: Validate target, migrate, RLS, runtime and recovery
         env:
+          # libpq 17 uses the OS OpenSSL trust store and still verifies hostname.
+          PGSSLROOTCERT: system
           F02_ADMIN_URL: ${{ secrets.F02_ADMIN_DATABASE_URL }}
           F02_RUNTIME_URL: ${{ secrets.F02_RUNTIME_DATABASE_URL }}
           # HIGH RISK: project-scoped Management API key permits writes/deletion,

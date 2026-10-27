@@ -50,6 +50,8 @@ try:
         import shlex
         vals=dict(PGHOST=host,PGPORT='5432',PGDATABASE=os.environ['F02_DATABASE'],
                   PGUSER=user,PGPASSWORD=urllib.parse.unquote(u.password),PGSSLMODE='verify-full',
+                  PGSSLROOTCERT='system', # libpq 17: OS trust store, shared by psql and pg_dump
+                  PGGSSENCMODE='disable', # require TLS rather than GSS encryption precedence
                   PGCONNECT_TIMEOUT='10',PGOPTIONS='-c statement_timeout=60000 -c lock_timeout=10000')
         pathlib.Path(os.environ['F02_WORK'],kind+'.env').write_text('\n'.join('export '+k+'='+shlex.quote(v) for k,v in vals.items()))
     assert users[0]!=users[1] and 'vital_app' not in users

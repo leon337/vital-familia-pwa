@@ -124,11 +124,11 @@ it.each(['client','server'] as const)('cold-import auth %s com SDK Neon real, se
   await appZod(async(raw,probe)=>{
    raw.core.config({jitless:false});
    if(side==='client'){
-    const module=await import('../lib/auth-client');
-    expect(module.authClient).toBeDefined();
+    const sdkModule=await import('../lib/auth-client');
+    expect(sdkModule.authClient).toBeDefined();
    }else{
-    const module=await import('../lib/auth');
-    expect(module.auth).toBeTypeOf('function');
+    const sdkModule=await import('../lib/auth');
+    expect(sdkModule.auth).toBeTypeOf('function');
    }
    const {z}=await import('../lib/zod');
    expect(z).toBe(raw);

@@ -1,4 +1,4 @@
-import {z} from 'zod';
+import {z} from './zod';
 export const consentVersion = '2026-10-27.v1';
 const base = { measuredAt:z.iso.datetime({offset:true}).refine(v=>new Date(v).getTime()<=Date.now(), 'Data futura inválida'), context:z.enum(['jejum','após refeição','repouso','outro']) };
 // Legacy demo glucose without a unit remains mg/dL; reviewed persistence requires a unit.

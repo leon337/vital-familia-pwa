@@ -1,0 +1,32 @@
+name: Backend security synthetic
+on:
+  push:
+    branches: [feat/f02-neon-backend-secure]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: vital_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: vital_test
+    steps:
+      - uses: actions/checkout@v5
+      - name: Schema and A/B/C isolation (synthetic disposable database)
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f db/001_schema.sql
+          psql -X -v ON_ERROR_STOP=1 -f db/002_security_test.sql

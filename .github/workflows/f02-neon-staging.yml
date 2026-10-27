@@ -1,0 +1,52 @@
+name: F02 Neon staging synthetic
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: f02-neon-staging
+  cancel-in-progress: false
+jobs:
+  staging:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'leon337/vital-familia-pwa' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integration') &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner
+    environment: staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    services:
+      recovery:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install PostgreSQL 17 client (runner only)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - name: Validate target, migrate, RLS, runtime and recovery
+        env:
+          F02_ADMIN_URL: ${{ secrets.F02_ADMIN_DATABASE_URL }}
+          F02_RUNTIME_URL: ${{ secrets.F02_RUNTIME_DATABASE_URL }}
+          NEON_API_KEY: ${{ secrets.F02_NEON_READ_API_KEY }}
+          F02_ENDPOINT_ID: ${{ vars.F02_ENDPOINT_ID }}
+          F02_DATABASE: ${{ vars.F02_DATABASE }}
+          RECOVERY_CONTAINER: ${{ job.services.recovery.id }}
+        run: |
+          set -euo pipefail
+          bash scripts/ops/F02-neon-staging.sh

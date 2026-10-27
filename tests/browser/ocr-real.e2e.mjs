@@ -1,9 +1,20 @@
 import { test, expect } from '@playwright/test';
 
+// Direct CDP evaluation avoids Playwright's main-world UtilityScript eval probe.
+// Do not bypass CSP: any remaining violation still fails, including blocked eval.
+async function browserValue(page, fn, arg) {
+  const { result, exceptionDetails } = await page.__f02Session.send('Runtime.evaluate', {
+    expression: `(${fn.toString()})(${JSON.stringify(arg) ?? 'undefined'})`,
+    awaitPromise: true, returnByValue: true, allowUnsafeEvalBlockedByCSP: false,
+  });
+  if (exceptionDetails) throw new Error(JSON.stringify(exceptionDetails));
+  return result.value;
+}
+
 // Real raster pixels, no OCR/parser/worker mocks or injected recognition results.
 // Canvas uses a runner-installed font, and no fixture text is sent to the app.
 async function fixture(page, lines, name, testInfo) {
-  const base64 = await page.evaluate(async (textLines) => {
+  const base64 = await browserValue(page, async (textLines) => {
     await document.fonts.ready;
     const canvas = document.createElement('canvas');
     canvas.width = 1200;
@@ -23,7 +34,7 @@ async function fixture(page, lines, name, testInfo) {
   return { name: `${name}.png`, mimeType: 'image/png', buffer };
 }
 
-const photo = page => page.getByRole('region', { name: 'Foto do aparelho' });
+const photo = page => page.getByRole('main').getByRole('region', { name: 'Foto do aparelho', exact: true });
 const confirmation = page => photo(page).getByRole('checkbox', { name: /Conferi e confirmo/ });
 const save = page => photo(page).getByRole('button', { name: 'Registrar exemplo confirmado' });
 async function historyCount(page) {
@@ -31,17 +42,37 @@ async function historyCount(page) {
   return page.locator('tbody tr').count();
 }
 async function openPhoto(page) {
-  await page.getByRole('button', { name: '＋ Nova medição', exact: true }).click();
+  const primary = page.getByRole('main').getByRole('button', { name: '＋ Nova medição', exact: true });
+  await expect(primary).toHaveCount(1);
+  await primary.click();
+  await expect(photo(page)).toBeVisible();
   await photo(page).getByRole('checkbox', { name: /Declaro que a imagem/ }).check();
 }
 
 // Install restrictions before navigation, including traffic initiated by workers.
 // SW is blocked so all requests remain observable/routable. This is not a SW test.
 test.beforeEach(async ({ context, page }, testInfo) => {
-  const external = [], writes = [], assets = [], errors = [];
+  const external = [], writes = [], assets = [], errors = [], cookieHeaders = [], security = [], failedRequests = [];
+  // Register audit before setup assertions so setup failures also retain evidence.
+  testInfo._f02 = { external, writes, assets, errors, cookieHeaders, security, failedRequests };
+  page.__f02Session = await context.newCDPSession(page);
+  page.__f02Session.on('Log.entryAdded', ({ entry }) => {
+    if (entry.source === 'security') security.push(entry);
+  });
+  await page.__f02Session.send('Log.enable');
+  await context.routeWebSocket('**/*', socket => {
+    external.push({ url: socket.url(), method: 'WebSocket' });
+    socket.close();
+  });
+  context.on('requestfailed', request => failedRequests.push({
+    url: request.url(), failure: request.failure(),
+  }));
   await context.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
+    const headers = await request.allHeaders();
+    if (headers.cookie) cookieHeaders.push({ direction: 'request', url: request.url() });
+    if (request.postDataBuffer()) writes.push({ url: request.url(), method: request.method(), hasBody: true });
     if (url.protocol === 'http:' || url.protocol === 'https:') {
       if (url.origin !== 'http://127.0.0.1:3000') {
         external.push({ url: request.url(), method: request.method() });
@@ -54,7 +85,10 @@ test.beforeEach(async ({ context, page }, testInfo) => {
     }
     await route.continue();
   });
-  context.on('response', response => {
+  context.on('response', async response => {
+    if ((await response.headersArray()).some(header => header.name.toLowerCase() === 'set-cookie')) {
+      cookieHeaders.push({ direction: 'response', url: response.url() });
+    }
     if (new URL(response.url()).pathname.startsWith('/ocr/')) {
       assets.push({ url: response.url(), status: response.status() });
     }
@@ -68,30 +102,48 @@ test.beforeEach(async ({ context, page }, testInfo) => {
   await page.addInitScript(() => {
     window.__f02Csp = [];
     document.addEventListener('securitypolicyviolation', event => {
-      window.__f02Csp.push({ directive: event.violatedDirective, blockedURI: event.blockedURI });
+      window.__f02Csp.push({
+        directive: event.violatedDirective, effectiveDirective: event.effectiveDirective,
+        blockedURI: event.blockedURI, sourceFile: event.sourceFile,
+        lineNumber: event.lineNumber, columnNumber: event.columnNumber,
+        sample: event.sample, disposition: event.disposition,
+        originalPolicy: event.originalPolicy, time: performance.now(),
+      });
     });
   });
   const response = await page.goto('/');
   expect(response?.status()).toBe(200);
+  expect(response.headers()['content-security-policy']).not.toMatch(/(?:^|\s)'unsafe-eval'(?:\s|;|$)/);
   expect(response.headers()['content-security-policy']).toContain("connect-src 'self'");
   expect(response.headers()['content-security-policy']).toContain("worker-src 'self'");
   expect(response.headers()['permissions-policy']).toContain('camera=(self)');
   await expect(page.getByText(/AMBIENTE DEMONSTRATIVO/)).toBeVisible();
-  // Teardown runs even if OCR fails, preserving diagnostics and privacy failures.
-  testInfo._f02 = { external, writes, assets, errors };
 });
 
-test.afterEach(async ({ page }, testInfo) => {
+test.afterEach(async ({ context, page }, testInfo) => {
   const audit = testInfo._f02;
   if (!audit) return;
-  const csp = await page.evaluate(() => window.__f02Csp);
+  const browser = await browserValue(page, async () => ({
+    csp: window.__f02Csp, sessionStorage: Object.keys(sessionStorage),
+    localStorage: Object.keys(localStorage), indexedDB: await indexedDB.databases(),
+  }));
+  const { csp } = browser;
+  // Do not use storageState here: its main-world evaluation can initialize the
+  // same UtilityScript eval probe that this audit deliberately avoids.
+  const storage = { cookies: await context.cookies() };
   await testInfo.attach('browser-audit', {
-    body: Buffer.from(JSON.stringify({ ...audit, csp }, null, 2)), contentType: 'application/json',
+    body: Buffer.from(JSON.stringify({ ...audit, ...browser, storage }, null, 2)), contentType: 'application/json',
   });
-  expect(audit.external, 'No attempt to contact third parties').toEqual([]);
-  expect(audit.writes, 'No image upload or backend write').toEqual([]);
-  expect(csp, 'No runtime CSP violations').toEqual([]);
-  expect(audit.errors, 'No console errors, camera/policy warnings or uncaught errors').toEqual([]);
+  expect.soft(storage.cookies, 'No cookies, including HttpOnly/third-party cookies').toEqual([]);
+  expect.soft(browser.localStorage, 'No persistent local data').toEqual([]);
+  expect.soft(browser.indexedDB, 'No persisted OCR/clinical database').toEqual([]);
+  expect.soft(browser.sessionStorage, 'No session persistence').toEqual([]);
+  expect.soft(audit.cookieHeaders, 'No cookie exchange').toEqual([]);
+  expect.soft(audit.external, 'No attempt to contact third parties').toEqual([]);
+  expect.soft(audit.writes, 'No image upload or backend write').toEqual([]);
+  expect.soft(csp, 'No runtime CSP violations').toEqual([]);
+  expect.soft(audit.security, 'No browser security log violations (including workers)').toEqual([]);
+  expect.soft(audit.errors, 'No console errors, camera/policy warnings or uncaught errors').toEqual([]);
 });
 
 for (const sample of [

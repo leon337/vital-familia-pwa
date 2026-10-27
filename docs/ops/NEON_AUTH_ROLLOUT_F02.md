@@ -2,6 +2,14 @@
 
 BRUNO · Plataforma/DevOps/SRE · diagnóstico em 2026-10-27. **NO-GO para dados reais; staging somente sintético.** Este documento não autoriza execução das mudanças propostas.
 
+## Scripts legados desativados — gate de segurança F02
+
+`scripts/staging-migrate.sh` e `scripts/staging-recovery.sh` estão **deprecated/desativados**: abortam imediatamente com status não zero, independentemente de `DATABASE_URL`, variáveis `PG*`, alvo declarado, aprovação declarada ou argumentos. Não executam SQL nem restauração. Usar exclusivamente o **workflow staging guardado do GitHub Actions mantido por BRUNO**, com revisão e ambiente protegido. Variáveis declaradas não comprovam a identidade do banco. Qualquer bypass que permita executar migração/restauração por esses entrypoints é **P0**, bloqueando o rollout.
+
+O baseline `db/001_schema.sql` faz `COMMIT` antes de `\ir 003_admission.sql`; execução direta pode deixar aplicação parcial. Os SQLs permanecem inalterados nesta correção de entrypoints. O runner BRUNO foi inspecionado na ref local `origin/feat/f02-neon-staging-ci`, SHA `88daec36e22fc9117c49b26bdb1aca1521e20ef3`: `scripts/ops/F02-neon-staging.sh` remove explicitamente os wrappers `BEGIN`/`COMMIT` e o include conhecido de `001`/`003`, recusa outros metacomandos psql e reúne preflight, baseline, admissão e grant em uma única transação com `ON_ERROR_STOP`. Esse runner e `.github/workflows/f02-neon-staging.yml` precisam integrar o candidato revisado antes de uso; não estão neste checkout. A prova cloud de rollback integral em falha permanece pendente. Apenas envolver o arquivo atual em uma transação externa não basta. Não usar os comandos históricos abaixo como alternativa ao workflow guardado.
+
+O recheck `docs/audit/F02-EMILY-RECHECK.md` foi lido do objeto Git local `origin/audit/f02-emily-recheck` (`95634db`), incluindo F03. A implementação de infra associada ao PR #11 foi revisada pela ref local acima, sem consultar o PR remoto ou confirmar seu estado atual. Integração e receipts do runner permanecem gates pendentes. `tests/legacy-migrate-denial.test.ts` verifica estaticamente os entrypoints e sua negação com Bash somente no GitHub Actions; não foi executado localmente. GABRIEL conduz commit/push e coleta da evidência CI; MESTRE recebe governança, sem execução operacional.
+
 ## Escopo e fontes
 
 Contrato [BRUNO](https://github.com/leon337/multiagent-collaboration-framework/blob/main/docs/agentes/BRUNO.md), lido pelo connector GitHub (blob `0988d67fb793792a578d0b069283b6e22f09f520`); [issue F02 #2](https://github.com/leon337/vital-familia-pwa/issues/2), aberta, A6–A9 pendentes. Baseline local `0ea480e8c0d08b20ae4b3abc8723d4b47873f433`. Inspecionados `lib/auth.ts`, `lib/backend.ts`, handlers `app/api`, `db/001_schema.sql`, `db/002_security_test.sql`, `tests/security.test.ts`, `.env.example`, `.github/workflows/{ci,cd}.yml` e [CI/CD](../CI_CD.md).
@@ -44,7 +52,7 @@ O gate Vercel já opera conforme evidência fornecida e `docs/CI_CD.md`: check `
 
 ### Execução SQL planejada exclusivamente no CI cloud
 
-Exemplo para runner autorizado, com variáveis já injetadas pelo secret store; não imprimir URL, não usar `set -x`. Conexão migration aponta somente para branch efêmera; testar também a conexão real da aplicação em job separado. TLS deve validar certificado/hostname (`verify-full` ou configuração equivalente validada no driver), sem desabilitar verificação.
+**Referência histórica, não executar diretamente:** o fluxo guardado deve substituir este exemplo e comprovar atomicidade de `001` + `003`. Variáveis já injetadas pelo secret store; não imprimir URL, não usar `set -x`. Conexão migration aponta somente para branch efêmera; testar também a conexão real da aplicação em job separado. TLS deve validar certificado/hostname (`verify-full` ou configuração equivalente validada no driver), sem desabilitar verificação.
 
 ```sh
 psql "$MIGRATION_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f db/001_schema.sql

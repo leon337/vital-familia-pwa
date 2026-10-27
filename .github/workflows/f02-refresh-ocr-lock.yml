@@ -1,0 +1,42 @@
+name: F02 refresh OCR lockfile
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: f02-refresh-ocr-lock
+  cancel-in-progress: false
+
+jobs:
+  refresh-lockfile:
+    if: github.event_name == 'workflow_dispatch' && github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout photo capture branch
+        uses: actions/checkout@v5
+        with:
+          ref: feat/f02-photo-capture
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - name: Refresh package lockfile for tesseract.js
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Commit and push lockfile changes
+        shell: bash
+        run: |
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo "No lockfile changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: refresh OCR dependency lockfile"
+          git push origin HEAD:refs/heads/feat/f02-photo-capture

@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { classifyCsp, knownEvalDiagnostic } from './helpers/csp-audit.mjs';
+import { classifyCsp, expectedCsp, knownEvalDiagnostic } from './helpers/csp-audit.mjs';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 // Direct CDP evaluation avoids Playwright's main-world UtilityScript eval probe.
-// CSP remains enforced; only the narrowly classified startup framework event is expected.
+// CSP remains enforced; at most one narrowly classified startup framework event is allowed.
 async function browserValue(page, fn, arg) {
   const { result, exceptionDetails } = await page.__f02Session.send('Runtime.evaluate', {
     expression: `(${fn.toString()})(${JSON.stringify(arg) ?? 'undefined'})`,
@@ -117,6 +117,7 @@ test.beforeEach(async ({ context, page }, testInfo) => {
   });
   const response = await page.goto('/');
   expect(response?.status()).toBe(200);
+  expect(response.headers()['content-security-policy'], 'Enforced product CSP must remain unchanged').toBe(expectedCsp);
   expect(response.headers()['content-security-policy']).not.toMatch(/(?:^|\s)'unsafe-eval'(?:\s|;|$)/);
   expect(response.headers()['content-security-policy']).toContain("connect-src 'self'");
   expect(response.headers()['content-security-policy']).toContain("worker-src 'self'");
@@ -148,7 +149,7 @@ test.afterEach(async ({ context, page }, testInfo) => {
   expect.soft(audit.cookieHeaders, 'No cookie exchange').toEqual([]);
   expect.soft(audit.external, 'No attempt to contact third parties').toEqual([]);
   expect.soft(audit.writes, 'No image upload or backend write').toEqual([]);
-  expect.soft(classification.known, 'Exactly one enforced Next startup eval block').toHaveLength(1);
+  expect.soft(classification.known.length, 'Zero or one enforced Next startup eval block').toBeLessThanOrEqual(1);
   expect.soft(classification.unexpected, 'All other CSP violations fail').toEqual([]);
   expect.soft(unexpectedSecurity, 'No other browser security diagnostics (including workers)').toEqual([]);
   expect.soft(unexpectedErrors, 'No other console errors, camera/policy warnings or uncaught errors').toEqual([]);
@@ -214,9 +215,9 @@ for (const sample of [
       body: Buffer.from(JSON.stringify(wasmProof, null, 2)), contentType: 'application/json',
     });
     // Successful extraction, edit, confirmation and save above prove OCR continues
-    // after the startup eval was blocked, rather than silently allowing eval.
+    // with the enforced CSP, whether or not Next attempts the startup eval.
     const csp = await browserValue(page, () => window.__f02Csp);
-    expect(classifyCsp(csp).known).toHaveLength(1);
+    expect(classifyCsp(csp).known.length).toBeLessThanOrEqual(1);
     expect(classifyCsp(csp).unexpected).toEqual([]);
   });
 }

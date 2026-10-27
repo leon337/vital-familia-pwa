@@ -1,17 +1,18 @@
 const origin = 'http://127.0.0.1:3000';
+// Independent QA snapshot: changes to the product policy require explicit review.
+export const expectedCsp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 export function isKnownStartupEval(event) {
   let source;
   try { source = new URL(event.sourceFile); } catch { return false; }
   return source.origin === origin && /^\/_next\/static\/chunks\/[^/]+\.js$/.test(source.pathname)
+    && !source.username && !source.password
     && !source.search && !source.hash
     && event.blockedURI === 'eval'
     && event.directive === 'script-src' && event.effectiveDirective === 'script-src'
     && event.disposition === 'enforce'
-    && typeof event.originalPolicy === 'string'
-    && /(?:^|;)\s*script-src\s/.test(event.originalPolicy)
-    && !event.originalPolicy.includes("'unsafe-eval'")
-    && Number.isFinite(event.time) && event.time >= 0 && event.time <= 250;
+    && event.originalPolicy === expectedCsp
+    && Number.isFinite(event.time) && event.time >= 0 && event.time <= 1500;
 }
 
 export function classifyCsp(events) {

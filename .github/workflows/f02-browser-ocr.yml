@@ -42,6 +42,9 @@ jobs:
         run: node tests/browser/audit-artifacts.mjs build
       - name: Exercise real browser UI and Tesseract pixels on localhost
         run: npx playwright test --config tests/browser/playwright.config.mjs
+      - name: Preserve allowlisted CSP chunk provenance (including failed tests)
+        if: always()
+        run: node tests/browser/csp-chunk-provenance.mjs
       - name: Verify mandatory green-run evidence and checksum manifest
         run: node tests/browser/audit-artifacts.mjs finalize
       - name: Preserve synthetic fixtures, browser audit and failure traces

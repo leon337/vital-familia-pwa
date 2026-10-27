@@ -1,0 +1,52 @@
+name: F02 | Real Chromium OCR gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, 'feat/f02-photo-capture']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: f02-browser-ocr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pixel-ocr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+      SYNTHETIC_BACKEND_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci --no-fund
+      - name: Install pinned browser test runner (no repository lockfile change)
+        run: npm install --no-save --package-lock=false --ignore-scripts @playwright/test@1.56.1
+      - name: Install Chromium and operating system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Install deterministic synthetic fixture font
+        run: sudo apt-get update && sudo apt-get install -y fonts-liberation
+      - name: Build demo and self-hosted OCR assets
+        run: npm run build
+      - name: Exercise real browser UI and Tesseract pixels on localhost
+        run: npx playwright test --config tests/browser/playwright.config.mjs
+      - name: Preserve synthetic fixtures, browser audit and failure traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f02-chromium-ocr-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/f02/
+          if-no-files-found: warn
+          retention-days: 7

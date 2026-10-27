@@ -1,4 +1,27 @@
 import {auth} from '@/lib/auth';
-import {enabled} from '@/lib/backend';
-async function handler(request:Request,context:{params:Promise<{path:string[]}>}){if(!enabled())return Response.json({error:'Auth desabilitado no demo'},{status:503});return auth().handler()[request.method==='POST'?'POST':'GET'](request,context);}
+import {enabled,sameOrigin,boundedJson,failure,HttpError} from '@/lib/backend';
+async function handler(request:Request,context:{params:Promise<{path:string[]}>}){
+ try{
+  if(!enabled())throw new HttpError(503,'Auth bloqueado até validação governada');
+  const {path}=await context.params;
+  const endpoint=path.join('/');
+  const allowed=request.method==='GET'?['get-session','callback/google']:['sign-in/social','sign-out'];
+  if(!allowed.includes(endpoint))throw new HttpError(403,'Método de autenticação recusado');
+  if(request.method==='POST'){
+   sameOrigin(request);
+   if(endpoint==='sign-in/social'){
+    const body=await boundedJson(request.clone());
+    if(!body||typeof body!=='object'||Array.isArray(body))throw new HttpError(400,'Provider inválido');
+    if(body.provider!=='google'||Object.keys(body).some(k=>!['provider','callbackURL','errorCallbackURL'].includes(k)))throw new HttpError(400,'Provider inválido');
+    for(const key of ['callbackURL','errorCallbackURL'])if(body[key] && (typeof body[key]!=='string'||new URL(body[key],process.env.APP_ORIGIN).origin!==process.env.APP_ORIGIN))throw new HttpError(403,'Callback recusado');
+    // Provider login is separate from invitation-only application admission.
+    // Force login-only upstream; never let the client enable provider self-signup.
+    const headers=new Headers(request.headers);headers.delete('content-length');
+    request=new Request(request.url,{method:'POST',headers,body:JSON.stringify({...body,disableSignUp:true})});
+   }
+  }
+  const response=await auth().handler()[request.method==='POST'?'POST':'GET'](request,context);
+  response.headers.set('Cache-Control','no-store');return response;
+ }catch(e){return failure(e);}
+}
 export {handler as GET,handler as POST};

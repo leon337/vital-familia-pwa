@@ -7,3 +7,6 @@ coverage/
 .vercel/
 .npm-cache/
 .vercel
+
+# OCR assets are copied at build time from exact upstream versions.
+public/ocr/

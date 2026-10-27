@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prebuild": "node scripts/prepare-ocr.mjs",
+    "ocr:assets": "node scripts/prepare-ocr.mjs"
   },
   "dependencies": {
     "@neondatabase/auth": "0.6.0-beta",

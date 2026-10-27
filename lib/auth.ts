@@ -1,4 +1,5 @@
 import 'server-only';
+import './zod'; // Configure before evaluating SDK dependencies that may create schemas.
 import {createNeonAuth} from '@neondatabase/auth/next/server';
 export function auth(){
  if(!process.env.NEON_AUTH_BASE_URL || !process.env.NEON_AUTH_COOKIE_SECRET) throw new Error('Auth não configurado');

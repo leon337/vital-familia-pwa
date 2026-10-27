@@ -8,7 +8,11 @@ concurrency:
   cancel-in-progress: false
 jobs:
   staging:
+    # HARD DENY: remove literal false only through reviewed integration after
+    # owner verifies protected staging Environment, environment-only secrets and
+    # schema approver recorded in the runbook. A variable alone cannot unlock this.
     if: >-
+      false &&
       github.event_name == 'workflow_dispatch' &&
       github.repository == 'leon337/vital-familia-pwa' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integration') &&
@@ -43,7 +47,10 @@ jobs:
         env:
           F02_ADMIN_URL: ${{ secrets.F02_ADMIN_DATABASE_URL }}
           F02_RUNTIME_URL: ${{ secrets.F02_RUNTIME_DATABASE_URL }}
-          NEON_API_KEY: ${{ secrets.F02_NEON_READ_API_KEY }}
+          # HIGH RISK: project-scoped Management API key permits writes/deletion,
+          # even though this script uses GET only. No read-only scope exists.
+          # Store only in the protected staging Environment; never repo/org secrets.
+          F02_NEON_PROJECT_API_KEY: ${{ secrets.F02_NEON_PROJECT_API_KEY }}
           F02_ENDPOINT_ID: ${{ vars.F02_ENDPOINT_ID }}
           F02_DATABASE: ${{ vars.F02_DATABASE }}
           RECOVERY_CONTAINER: ${{ job.services.recovery.id }}

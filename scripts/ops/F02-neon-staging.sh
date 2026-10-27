@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Cloud runner only. No credentials in argv, logs, dumps uploaded or shell tracing.
+set +x # Never trace secrets, including when invoked with bash -x.
 set -euo pipefail
 umask 077
 [[ ${GITHUB_ACTIONS:-} == true && ${GITHUB_EVENT_NAME:-} == workflow_dispatch ]]
@@ -9,6 +10,10 @@ umask 077
 work=$(mktemp -d "${RUNNER_TEMP:?}/f02.XXXXXXXX")
 trap 'rm -rf "$work"' EXIT
 export F02_WORK="$work"
+# HIGH RISK: F02_NEON_PROJECT_API_KEY must be scoped to the single fixed project.
+# Neon Management API has no read-only key scope: this key can write/delete the
+# project even when our requests are GET. Protected staging Environment only.
+# Never print the key or fall back to an account/org-wide or legacy key.
 # API GET only; metadata must positively identify a non-default child branch.
 # No redirect, no retry of writes, no create/reset/delete branch operations.
 python3 <<'PY'
@@ -16,7 +21,7 @@ import os,json,urllib.request,urllib.parse,pathlib,re
 p='patient-band-35892280'; b='br-polished-recipe-b6yh4cw2'
 def get(path):
     req=urllib.request.Request('https://console.neon.tech/api/v2/projects/'+p+path,
-        headers={'Authorization':'Bearer '+os.environ['NEON_API_KEY']})
+        headers={'Authorization':'Bearer '+os.environ['F02_NEON_PROJECT_API_KEY']})
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self,*args,**kwargs): raise RuntimeError('redirect denied')
     with urllib.request.build_opener(NoRedirect).open(req,timeout=25) as r: return json.load(r)
@@ -52,7 +57,7 @@ try:
 except Exception:
     raise SystemExit('F02 target/credentials validation denied (details suppressed)')
 PY
-unset F02_ADMIN_URL F02_RUNTIME_URL NEON_API_KEY
+unset F02_ADMIN_URL F02_RUNTIME_URL F02_NEON_PROJECT_API_KEY
 admin() { ( source "$work/ADMIN.env"; psql -X -q -v ON_ERROR_STOP=1 "$@" ); }
 runtime() { ( source "$work/RUNTIME.env"; psql -X -q -v ON_ERROR_STOP=1 "$@" ); }
 # Never stream database errors (may contain SQL/connection details) into Actions logs.

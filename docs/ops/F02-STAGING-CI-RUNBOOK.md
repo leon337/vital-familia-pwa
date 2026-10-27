@@ -1,6 +1,6 @@
 # F02 — CI Neon staging, BRUNO / MCF Classe C
 
-Entrega de infraestrutura para PR #9, branch Git `feat/f02-neon-staging-ci`. Integração por GABRIEL; MESTRE governa. **NO-GO para dados reais.** Esta entrega não executou SQL, migração, criação de senhas, npm, lint, build, testes locais, commit ou push. Nenhuma credencial ou `.env` foi consultada. Um workflow preparado não é evidência de run aprovado.
+Entrega de infraestrutura para PR #9, branch Git `feat/f02-neon-staging-ci`. Integração por GABRIEL; MESTRE governa. **F02 staging: NO-GO (execução bloqueada); NO-GO para dados reais.** Esta entrega não executou SQL, migração, criação de senhas, npm, lint, build, testes locais, commit ou push. Nenhuma credencial ou `.env` foi consultada. Um workflow preparado não é evidência de run aprovado.
 
 ## Alvo e autoridade
 
@@ -16,7 +16,24 @@ Secrets **somente no Environment**, nunca em repository/organization secrets ace
 | --- | --- |
 | `F02_ADMIN_DATABASE_URL` | Login migration owner, exclusivamente staging, TLS `sslmode=verify-full` |
 | `F02_RUNTIME_DATABASE_URL` | Login dedicado já provisionado pelo owner, diferente do admin, TLS idêntico |
-| `F02_NEON_READ_API_KEY` | Chave para consultar metadados Neon; menor escopo disponível para este projeto, sem uso de APIs de escrita |
+| `F02_NEON_PROJECT_API_KEY` | **ALTO RISCO:** chave de organização project-scoped limitada exclusivamente a `patient-band-35892280`; permite escrita e até deleção do projeto. Não existe scope read-only da Neon Management API. Usar GET não reduz os privilégios da chave. |
+
+**Correção P1 de privilégio:** o nome anterior `F02_NEON_READ_API_KEY` e qualquer alegação de chave read-only eram falsos. O código faz somente GET, mas a credencial conserva autoridade de gestão, escrita e deleção. O owner deve verificar no provedor o vínculo da chave ao único projeto permitido; os GETs validam o alvo, não comprovam o escopo da chave. Não aceitar chave pessoal, global ou com outros projetos. Provisionar a nova secret exclusivamente no Environment `staging` protegido; remover a secret antiga e revogar qualquer chave anterior associada a ela. Nunca imprimir, copiar para argumentos, registrar headers, habilitar tracing ou publicar a chave. Não há fallback para o nome antigo. Não foi feita consulta web nesta atualização; a correção segue a informação oficial fornecida pelo solicitante.
+
+## Gate governado e checklist F02 staging — NO-GO
+
+Flag de aprovação de schema: `F02_SCHEMA_APPROVED=false`; `schema_approver=PENDENTE`. Registro de governança, não variável que libera execução. Aprovação exige responsável identificado, SHA revisado e evidência no handoff; não atribuir aprovador automaticamente ao ator do dispatch. Nenhum schema está aprovado nesta entrega.
+
+O job contém `false &&` literal (hard deny). Manter esse bloqueio até verificar as proteções, secrets e aprovação de schema dos quatro primeiros itens abaixo. Referenciar `environment: staging` não comprova proteção; uma variável de confirmação também não comprova. A retirada do bloqueio exige alteração revisada por GABRIEL com aprovação governada, após verificação externa pelo owner. Esta atualização não libera execução.
+
+- [ ] Owner verificou Environment `staging` existente e protegido, reviewers, restrições de refs e prevenção de bypass conforme suporte do plano.
+- [ ] Todas as três secrets existem somente nesse Environment; nenhuma cópia em repository/organization secrets.
+- [ ] Owner verificou chave project-scoped exclusivamente para `patient-band-35892280` e aceitou explicitamente o risco de escrita/deleção; secret antiga removida e chave anterior revogada.
+- [ ] Revisor independente registrou SHA, `schema_approver` identificado e aprovação de schema; só então registrar `F02_SCHEMA_APPROVED=true` no handoff.
+- [ ] Revisão governada autorizou retirar o hard deny; alvo fixo, prova via API e demais validações permanecem obrigatórios.
+- [ ] Execução cloud futura aprovada apresentou evidências reais de validação, rollback e restore; até lá, resultados PENDENTES.
+
+Estado atual: todos os itens pendentes, `F02_SCHEMA_APPROVED=false`, `schema_approver=PENDENTE`, **F02 staging NO-GO**. Flags de backend/Auth/dados reais continuam desligadas mesmo após eventual aprovação de schema.
 
 Variáveis do Environment: `F02_ENDPOINT_ID` = ID exato do compute read-write **direto**, não pooler; `F02_DATABASE` = nome exato do banco vazio. Não inventar valores. URLs aceitas: URI PostgreSQL, host direto exato retornado pela API, porta 5432 ou omitida, database exato e query contendo apenas `sslmode=verify-full`. Sem query de options/host/service que sobreponha destino. Não afrouxar TLS para adaptar uma URL incompatível.
 
@@ -30,7 +47,7 @@ O preflight consulta `pg_available_extensions`, inventaria `pg_extension`, valid
 
 ## Execução e evidências
 
-Despachar Actions **F02 Neon staging synthetic** na ref integrada e aprovar Environment após revisão. Só runner GitHub hospedado; nunca rodar o script no notebook. O script também exige contexto Actions, repo, refs e owner. Ele não recebe parâmetros de alvo. Consultas com erro são suprimidas dos logs para evitar vazamento de URLs/SQL; fases mostram onde interrompeu. Não habilitar `set -x`, dump de ambiente ou upload do diretório temporário para depurar.
+Somente após cumprir os pré-requisitos do checklist e retirar o hard deny por revisão governada, despachar Actions **F02 Neon staging synthetic** na ref integrada e aprovar Environment após revisão. Só runner GitHub hospedado; nunca rodar o script no notebook. O script também exige contexto Actions, repo, refs e owner. Ele não recebe parâmetros de alvo. Consultas com erro são suprimidas dos logs para evitar vazamento de URLs/SQL; fases mostram onde interrompeu. Não habilitar `set -x`, dump de ambiente ou upload do diretório temporário para depurar.
 
 1. API GET lista branches e endpoints e exige `primary=false` explícito, parent presente, nome não reservado, projeto/branch/endpoint coerentes, endpoint habilitado read-write. Host de ambas URLs deve coincidir exatamente com metadados. API indisponível, redirect, metadado ausente ou divergente bloqueiam antes de SQL de escrita. Veja [API de endpoints por branch](https://api-docs.neon.tech/reference/listprojectbranchendpoints). Variável com branch declarada não é comprovação de identidade.
 2. Abre conexão runtime real e valida login esperado. Admin exige PostgreSQL 17, ausência de schemas/role do baseline, relações e rotinas de usuário, e apenas plpgsql instalada. Este gate é deliberadamente mais estrito que contar linhas: qualquer estrutura inesperada bloqueia mesmo vazia. Banco Auth com tabelas também bloqueia; não apagar nem ignorar tabelas para passar.

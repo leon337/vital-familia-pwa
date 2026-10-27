@@ -2,7 +2,7 @@ name: Vital Família | CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/f02-neon-backend-secure]
   pull_request:
   workflow_dispatch:
 

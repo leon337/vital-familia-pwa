@@ -9,14 +9,14 @@ export default defineConfig({
   timeout: 150_000,
   expect: { timeout: 55_000 },
   outputDir: '../../test-results/f02',
-  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
+  reporter: [['./audit-reporter.mjs'], ['json', { outputFile: 'test-results/f02/results.json' }], ['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
     baseURL: 'http://127.0.0.1:3000',
     browserName: 'chromium',
     headless: true,
     serviceWorkers: 'block',
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    trace: 'on',
+    screenshot: 'on',
   },
   webServer: {
     command: 'npm run start -- --hostname 127.0.0.1',

@@ -1,34 +1,17 @@
-const origin = 'http://127.0.0.1:3000';
-// Independent QA snapshot: changes to the product policy require explicit review.
+// Independent QA snapshot; no startup eval exemption is authenticated.
 export const expectedCsp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
-
-export function isKnownStartupEval(event) {
-  let source;
-  try { source = new URL(event.sourceFile); } catch { return false; }
-  return source.origin === origin && /^\/_next\/static\/chunks\/[^/]+\.js$/.test(source.pathname)
-    && !source.username && !source.password
-    && !source.search && !source.hash
-    && event.blockedURI === 'eval'
-    && event.directive === 'script-src' && event.effectiveDirective === 'script-src'
-    && event.disposition === 'enforce'
-    && event.originalPolicy === expectedCsp
-    && Number.isFinite(event.time) && event.time >= 0 && event.time <= 1500;
-}
-
 export function classifyCsp(events) {
-  const known = [], unexpected = [];
-  for (const event of events) {
-    if (isKnownStartupEval(event) && known.length === 0) known.push(event);
-    else unexpected.push(event);
-  }
-  return { known, unexpected };
+  return { known: [], unexpected: [...events] };
 }
-
-// Only the browser's eval-specific CSP diagnostic at the same source is paired
-// with the structured violation. Generic CSP, script, worker and XSS errors fail.
-export function knownEvalDiagnostic(text, url, classification) {
-  if (classification.known.length !== 1 || classification.unexpected.length) return false;
-  if (url !== classification.known[0].sourceFile) return false;
-  return /^(?:Refused to evaluate a string as JavaScript because 'unsafe-eval' is not an allowed source of script|Evaluating a string as JavaScript violates the following Content Security Policy directive)/.test(text)
-    && text.includes('script-src') && text.includes('unsafe-eval');
+// No console/CDP diagnostic may be discarded without authenticated provenance.
+export function knownEvalDiagnostic() { return false; }
+export function allowedRequest(raw, method, hasBody = false) {
+  try {
+    const url = new URL(raw);
+    return url.origin === 'http://127.0.0.1:3000' && !url.username && !url.password
+      && !url.search && !url.hash && !hasBody && ['GET', 'HEAD'].includes(method)
+      && (['/', '/favicon.ico'].includes(url.pathname)
+        || /^\/(?:_next\/static|ocr)\/[A-Za-z0-9_./-]+$/.test(url.pathname))
+      && !url.pathname.includes('..');
+  } catch { return false; }
 }

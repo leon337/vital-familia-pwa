@@ -1,0 +1,4 @@
+import {z} from 'zod';
+import {actor,boundedJson,failure,sameOrigin,transaction,HttpError} from '@/lib/backend';
+export async function GET(){try{const user=await actor();return Response.json(await transaction(user,user,async c=>(await c.query('SELECT caregiver_id,active,created_at FROM app.sharing_events WHERE patient_id=$1 ORDER BY seq DESC',[user])).rows));}catch(e){return failure(e);}}
+export async function POST(req:Request){try{sameOrigin(req);const user=await actor();const data=z.object({caregiverId:z.string().min(1).max(200),active:z.boolean()}).strict().safeParse(await boundedJson(req));if(!data.success||data.data.caregiverId===user)throw new HttpError(400,'Compartilhamento inválido');await transaction(user,user,c=>c.query('INSERT INTO app.sharing_events(patient_id,caregiver_id,active) VALUES($1,$2,$3)',[user,data.data.caregiverId,data.data.active]));return Response.json({ok:true});}catch(e){return failure(e);}}

@@ -3,7 +3,7 @@ name: F02 | Real Chromium OCR gate
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [main, 'feat/f02-photo-capture']
 
 permissions:
   contents: read

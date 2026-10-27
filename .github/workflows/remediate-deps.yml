@@ -1,0 +1,71 @@
+name: Vital Família | Corrigir dependências vulneráveis
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  remediate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Atualizar pins e overrides Zod no runner do GitHub
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          p.dependencies['@neondatabase/auth'] = '0.6.0-beta';
+          p.dependencies.zod = '^4.6.7';
+          p.overrides = {
+            ...(p.overrides || {}),
+            '@neondatabase/auth': {
+              ...(p.overrides?.['@neondatabase/auth'] || {}),
+              zod: '4.6.7'
+            },
+            '@neondatabase/auth-ui': {
+              ...(p.overrides?.['@neondatabase/auth-ui'] || {}),
+              zod: '4.6.7'
+            }
+          };
+          fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          NODE
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Instalar e validar dependências no GitHub
+        run: |
+          npm ci --no-fund
+          npm audit --omit=dev --audit-level=high
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          SYNTHETIC_BACKEND_ENABLED: 'false'
+      - name: Publicar branch de correção
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH="fix/zod-advisory-${{ github.run_id }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add package.json package-lock.json
+          git diff --cached --quiet && { echo 'Nenhuma alteração'; exit 1; }
+          git commit -m "fix: atualizar Zod vulnerável nas dependências Neon Auth"
+          git push origin "HEAD:refs/heads/$BRANCH"
+          gh pr create --base main --head "$BRANCH" --title "fix(security): mitigar GHSA-mrhx-c7xc-m3w5 (Zod/Neon)" --body "Correção gerada e validada exclusivamente por runner GitHub Actions; sem build/lint no notebook. Substitui dependências Zod 4.5.4 por 4.6.7 com overrides localizados, congela Neon Auth 0.6.0-beta, atualiza lockfile, audita produção e executa testes, lint, tipos e build. Exige CI do PR antes do merge."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

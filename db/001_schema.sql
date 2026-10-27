@@ -100,3 +100,6 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA app TO vital_app;
 COMMIT;
 -- Create a separate LOGIN role with TLS and grant vital_app to it; no ownership,
 -- CREATE, TRUNCATE, UPDATE, DELETE, superuser or BYPASSRLS. Do not use Neon owner URL.
+
+-- Fresh installations also apply the incremental admission upgrade (psql).
+\ir 003_admission.sql

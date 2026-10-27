@@ -11,8 +11,13 @@ async function handler(request:Request,context:{params:Promise<{path:string[]}>}
    sameOrigin(request);
    if(endpoint==='sign-in/social'){
     const body=await boundedJson(request.clone());
+    if(!body||typeof body!=='object'||Array.isArray(body))throw new HttpError(400,'Provider inválido');
     if(body.provider!=='google'||Object.keys(body).some(k=>!['provider','callbackURL','errorCallbackURL'].includes(k)))throw new HttpError(400,'Provider inválido');
-    for(const key of ['callbackURL','errorCallbackURL'])if(body[key] && new URL(body[key],process.env.APP_ORIGIN).origin!==process.env.APP_ORIGIN)throw new HttpError(403,'Callback recusado');
+    for(const key of ['callbackURL','errorCallbackURL'])if(body[key] && (typeof body[key]!=='string'||new URL(body[key],process.env.APP_ORIGIN).origin!==process.env.APP_ORIGIN))throw new HttpError(403,'Callback recusado');
+    // Provider login is separate from invitation-only application admission.
+    // Force login-only upstream; never let the client enable provider self-signup.
+    const headers=new Headers(request.headers);headers.delete('content-length');
+    request=new Request(request.url,{method:'POST',headers,body:JSON.stringify({...body,disableSignUp:true})});
    }
   }
   const response=await auth().handler()[request.method==='POST'?'POST':'GET'](request,context);

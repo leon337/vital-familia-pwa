@@ -9,7 +9,14 @@ export default defineConfig({
   timeout: 150_000,
   expect: { timeout: 55_000 },
   outputDir: '../../test-results/f02',
-  reporter: [['./audit-reporter.mjs'], ['json', { outputFile: 'test-results/f02/results.json' }], ['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
+  // Reporter paths resolve from this config directory, not the workflow cwd.
+  // Keep HTML separate from outputDir: the HTML reporter clears its own folder.
+  reporter: [
+    ['./audit-reporter.mjs'],
+    ['json', { outputFile: '../../test-results/f02/results.json' }],
+    ['list'],
+    ['html', { outputFolder: '../../playwright-report', open: 'never' }],
+  ],
   use: {
     baseURL: 'http://127.0.0.1:3000',
     browserName: 'chromium',

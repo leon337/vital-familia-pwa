@@ -4,11 +4,16 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 const root = 'test-results/f02';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-async function files(dir) {
+async function files(dir, hiddenInput = null) {
+  if (!(await lstat(dir)).isDirectory()) throw new Error(`Nonregular artifact directory: ${dir}`);
   const result = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const name = path.join(dir, entry.name);
-    if (entry.isDirectory()) result.push(...await files(name));
+    if (name === hiddenInput && entry.isFile()) continue;
+    if (entry.name.startsWith('.') || /[\\/]/.test(entry.name)) {
+      throw new Error(`Hidden or unsafe artifact path: ${name}`);
+    }
+    if (entry.isDirectory()) result.push(...await files(name, hiddenInput));
     else if (entry.isFile()) result.push(name);
     else throw new Error(`Nonregular artifact: ${name}`);
   }
@@ -71,9 +76,42 @@ export async function receipt() {
   await writeFile('test-results/f02-build-receipt.json', JSON.stringify(await buildIdentity(), null, 2));
 }
 export async function finalize() {
+  for (const dir of ['test-results', root, 'playwright-report']) {
+    if (!(await lstat(dir)).isDirectory()) throw new Error(`Nonregular artifact directory: ${dir}`);
+  }
   const receiptBytes = await readFile('test-results/f02-build-receipt.json');
   if (JSON.stringify(JSON.parse(receiptBytes)) !== JSON.stringify(await buildIdentity())) throw new Error('Build identity drift');
-  const list = [...await files(root), ...await files('playwright-report'), 'test-results/f02-build-receipt.json'];
+  // playwright.config.mjs resolves outputDir ../../test-results/f02 from tests/browser.
+  // upload-artifact excludes hidden files; publish only this strictly validated receipt.
+  const lastRunPath = `${root}/.last-run.json`;
+  const lastRunStat = await lstat(lastRunPath);
+  if (!lastRunStat.isFile() || lastRunStat.size > 4096) throw new Error('Invalid Playwright last-run receipt');
+  const lastRun = JSON.parse(await readFile(lastRunPath, 'utf8'));
+  if (!lastRun || Array.isArray(lastRun) || Object.keys(lastRun).sort().join(',') !== 'failedTests,status'
+    || lastRun.status !== 'passed' || !Array.isArray(lastRun.failedTests) || lastRun.failedTests.length) {
+    throw new Error('Incomplete or unexpected Playwright last-run receipt');
+  }
+  const lastRunAlias = `${root}/last-run.json`;
+  const canonicalLastRun = Buffer.from(JSON.stringify({ status: 'passed', failedTests: [] }, null, 2));
+  // Validate every entry, including empty directories, before creating the alias.
+  const list = [...await files(root, lastRunPath), ...await files('playwright-report'), 'test-results/f02-build-receipt.json'];
+  for (const name of list) {
+    if (path.isAbsolute(name) || name.split(/[\\/]/).some(part => part.startsWith('.'))) {
+      throw new Error(`Hidden or unsafe artifact path: ${name}`);
+    }
+  }
+  try {
+    await writeFile(lastRunAlias, canonicalLastRun, { flag: 'wx' });
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const aliasStat = await lstat(lastRunAlias);
+    if (!aliasStat.isFile() || aliasStat.size !== canonicalLastRun.length
+      || !(await readFile(lastRunAlias)).equals(canonicalLastRun)) {
+      throw new Error('Invalid or divergent Playwright last-run alias');
+    }
+  }
+  if (!list.includes(lastRunAlias)) list.push(lastRunAlias);
+  list.sort();
   for (const required of [`${root}/results.json`, `${root}/audit-reporter.json`, 'playwright-report/index.html']) {
     if (!list.includes(required)) throw new Error(`Missing evidence: ${required}`);
   }
@@ -112,6 +150,12 @@ export async function finalize() {
     const baseline = JSON.parse(await readFile(path.join(dir, 'navigation-baseline.json'), 'utf8'));
     if (!baseline.baseline || baseline.csp.length || audit.csp.length
       || JSON.stringify(baseline.baseline) !== JSON.stringify(audit.baseline)) throw new Error('Invalid CSP evidence');
+    if (JSON.stringify(baseline.isolationBefore) !== JSON.stringify(audit.isolationBefore)) throw new Error('Isolation baseline mismatch');
+    for (const snapshot of [baseline.isolationBefore, audit.isolationAfter]) {
+      if (!snapshot || snapshot.serviceWorkerController !== null
+        || !Array.isArray(snapshot.serviceWorkerRegistrations) || snapshot.serviceWorkerRegistrations.length
+        || !Array.isArray(snapshot.cacheStorage) || snapshot.cacheStorage.length) throw new Error('Invalid SW/CacheStorage isolation evidence');
+    }
     for (const key of ['buildMismatches', 'failedRequests', 'rejectedRequests', 'cookieHeaders', 'external', 'writes', 'unexpectedSecurity', 'unexpectedErrors', 'localStorage', 'indexedDB', 'sessionStorage']) {
       if (!Array.isArray(audit[key]) || audit[key].length) throw new Error(`Invalid audit: ${scenario.name}/${key}`);
     }

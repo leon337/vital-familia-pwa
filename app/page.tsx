@@ -7,7 +7,7 @@ export default function Home(){
  const [tab,setTab]=useState('Visão geral');const [role,setRole]=useState('Paciente');
  const [consent,setConsent]=useState(false);const [sharing,setSharing]=useState(false);
  const [chartKind,setChartKind]=useState('glucose');const [message,setMessage]=useState('');const [period,setPeriod]=useState('all');
- useEffect(()=>{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});},[]);
+ useEffect(()=>{if(process.env.NEXT_PUBLIC_F02_E2E_DISABLE_SW!=='true'&&'serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});},[]);
  const visible=records.filter(r=>period==='all'||r.kind===period).toSorted((a,b)=>b.measuredAt.localeCompare(a.measuredAt));
  const glucose=records.filter(r=>r.kind==='glucose').at(-1);const pressure=records.filter(r=>r.kind==='pressure').at(-1);
  function download(){const url=URL.createObjectURL(new Blob([csv(visible)],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='vital-familia-SINTETICO.csv';a.click();URL.revokeObjectURL(url);setMessage('CSV sintético exportado.');}

@@ -16,6 +16,20 @@ async function browserValue(page, fn, arg) {
   return result.value;
 }
 
+async function isolationSnapshot(page) {
+  return browserValue(page, async () => ({
+    serviceWorkerRegistrations: (await navigator.serviceWorker.getRegistrations()).map(registration => registration.scope),
+    serviceWorkerController: navigator.serviceWorker.controller?.scriptURL ?? null,
+    cacheStorage: await caches.keys(),
+  }));
+}
+
+function expectIsolation(snapshot) {
+  expect.soft(snapshot.serviceWorkerRegistrations, 'No service worker registrations').toEqual([]);
+  expect.soft(snapshot.serviceWorkerController, 'No controlling service worker').toBeNull();
+  expect.soft(snapshot.cacheStorage, 'CacheStorage remains empty').toEqual([]);
+}
+
 // Real raster pixels, no OCR/parser/worker mocks or injected recognition results.
 // Canvas uses a runner-installed font, and no fixture text is sent to the app.
 async function fixture(page, lines, name, testInfo) {
@@ -140,8 +154,10 @@ test.beforeEach(async ({ context, page }, testInfo) => {
   expect(response.headers()['permissions-policy']).toContain('camera=(self)');
   await expect(page.getByText(/AMBIENTE DEMONSTRATIVO/)).toBeVisible();
   await expect.poll(() => audit.ready).toBe(true);
+  audit.isolationBefore = await isolationSnapshot(page);
   audit.baseline = Object.freeze({ cspCount: csp.length, securityCount: security.length, errorsCount: errors.length });
-  await writeEvidence(testInfo, 'navigation-baseline.json', Buffer.from(JSON.stringify({ baseline: audit.baseline, csp, security, errors })), 'application/json');
+  await writeEvidence(testInfo, 'navigation-baseline.json', Buffer.from(JSON.stringify({ baseline: audit.baseline, isolationBefore: audit.isolationBefore, csp, security, errors })), 'application/json');
+  expectIsolation(audit.isolationBefore);
   // Do not excuse an event even if it matches the previously reported Next chunk.
   expect.soft(csp, 'Navigation CSP must be empty; cause is unauthenticated').toEqual([]);
 });
@@ -157,6 +173,8 @@ test.afterEach(async ({ context, page }, testInfo) => {
       sessionStorage: Object.keys(sessionStorage),
       localStorage: Object.keys(localStorage), indexedDB: await indexedDB.databases(),
     }));
+    audit.isolationAfter = await isolationSnapshot(page);
+    expectIsolation(audit.isolationAfter);
     const { csp } = audit;
     classification = classifyCsp(csp);
     unexpectedSecurity = audit.security.filter(entry => !knownEvalDiagnostic(entry.text, entry.url, classification));

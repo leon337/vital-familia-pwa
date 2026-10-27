@@ -20,6 +20,8 @@ jobs:
       CI: 'true'
       NEXT_TELEMETRY_DISABLED: '1'
       SYNTHETIC_BACKEND_ENABLED: 'false'
+      # Build-time opt-out for this synthetic gate; normal builds retain PWA registration.
+      NEXT_PUBLIC_F02_E2E_DISABLE_SW: 'true'
     steps:
       - uses: actions/checkout@v5
         with:

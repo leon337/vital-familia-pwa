@@ -5,6 +5,7 @@ import net from 'node:net';
 import tls from 'node:tls';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {readFile} from 'node:fs/promises';
 
 // A fresh V8 per control is essential: resetModules does not reset externalized
 // Zod's memoized Function capability probe. Never run the positive probe here.
@@ -102,7 +103,19 @@ it('configura jitless antes dos schemas e valida sem sondar Function',async()=>{
  });
 });
 
-it.each(['client','server'] as const)('cold-import auth %s com SDK Neon real, sem I/O',async side=>{
+it('auth server declara jitless antes do SDK Next (check estático)',async()=>{
+ // Deliberately do not import the server SDK in plain Node: its next/headers
+ // dependency requires Next resolution. This checks source ordering only, not
+ // SDK execution or CSP. Real server loading belongs to the Next build in
+ // .github/workflows/ci.yml and .github/workflows/f02-browser-ocr.yml.
+ // Browser OCR coverage does not prove an authenticated server session.
+ const source=await readFile(new URL('../lib/auth.ts',import.meta.url),'utf8');
+ expect(source).toMatch(/^import 'server-only';\s+import '\.\/zod';[^\n]*\nimport \{createNeonAuth\} from '@neondatabase\/auth\/next\/server';/);
+ const route=await readFile(new URL('../app/api/auth/[...path]/route.ts',import.meta.url),'utf8');
+ expect(route).toMatch(/^import \{auth\} from '@\/lib\/auth';/);
+});
+
+it('cold-import auth client com SDK Neon real, sem I/O',async()=>{
  // Fail closed even if an SDK catches the thrown network error: assert calls too.
  // No env stubs, credentials, SDK mocks, auth() calls or session requests.
  const blocked=vi.fn(()=>{throw new Error('Import tentou acessar a rede');});
@@ -115,21 +128,13 @@ it.each(['client','server'] as const)('cold-import auth %s com SDK Neon real, se
   vi.spyOn(net.Socket.prototype,'connect').mockImplementation(blocked),
   vi.spyOn(tls,'connect').mockImplementation(blocked),
  ];
- // Only the Next marker is replaced. Its default Node export throws outside
- // React Server conditions. This does NOT prove Next server bootstrap, browser
- // export conditions, hydration or CSP: those require the production Chromium
- // workflow (.github/workflows/f02-browser-ocr.yml), with zero CSP exemptions.
- if(side==='server') vi.doMock('server-only',()=>({}));
+ // This does NOT prove Next server bootstrap, browser export conditions,
+ // hydration or browser CSP; those require the production Next/Chromium gates.
  try{
   await appZod(async(raw,probe)=>{
    raw.core.config({jitless:false});
-   if(side==='client'){
-    const sdkModule=await import('../lib/auth-client');
-    expect(sdkModule.authClient).toBeDefined();
-   }else{
-    const sdkModule=await import('../lib/auth');
-    expect(sdkModule.auth).toBeTypeOf('function');
-   }
+   const sdkModule=await import('../lib/auth-client');
+   expect(sdkModule.authClient).toBeDefined();
    const {z}=await import('../lib/zod');
    expect(z).toBe(raw);
    expect(z.core.config().jitless).toBe(true);
@@ -137,7 +142,6 @@ it.each(['client','server'] as const)('cold-import auth %s com SDK Neon real, se
    expect(blocked).not.toHaveBeenCalled();
   });
  }finally{
-  if(side==='server') vi.doUnmock('server-only');
   for(const guard of guards.reverse()) guard.mockRestore();
  }
 });

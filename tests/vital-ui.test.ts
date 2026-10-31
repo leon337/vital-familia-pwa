@@ -23,7 +23,7 @@ describe('Vital UI-001: contrato de 12 telas e segurança do demo',()=>{
   it('não afirma integrações médicas inexistentes',()=>{
     expect(studio).not.toMatch(/sincronizada instantaneamente|validação biométrica de 7 dias|envia por WhatsApp\s+agora/i);
     expect(studio).toContain('Não haverá notificações');
-    expect(studio).toContain('não existem convites');
+    expect(studio).toContain('não envia convite');
   });
   it('explicita dados sintéticos, IA desligada e confirma antes de salvar',()=>{
     expect(VITAL_DEMO_NOTICE).toContain('100% sintéticos');

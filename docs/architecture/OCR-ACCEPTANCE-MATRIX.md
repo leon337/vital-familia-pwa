@@ -1,3 +1,5 @@
+> **NOTA DE GOVERNANÇA — 31/10/2026:** Esta é a matriz **histórica** de OCR local. Para a diretriz atual de LEANDRO (Gemini multimodal como leitor principal), usar a [matriz VISION-GEMINI](./VISION-GEMINI-ACCEPTANCE-MATRIX.md) e [ADR-003](./ADR-003-gemini-native-vision.md). Cenários de legibilidade e revisão humana permanecem úteis, mas gates específicos de Tesseract/worker não autorizam implantação Gemini nem envio de dados reais.
+
 # Matriz de aceitação — captura e OCR
 
 Estado: critérios definidos; **nenhum teste executado por este documento**. Referências: ADR-002 e `docs/ROADMAP.md`. Usar somente imagens geradas e identidades/medições sintéticas nesta etapa, sem fotografias de pacientes.

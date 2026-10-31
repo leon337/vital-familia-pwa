@@ -1,3 +1,5 @@
+> **NOTA DE GOVERNANÇA — 31/10/2026:** A decisão de produto de LEANDRO substitui Tesseract/OCR local como abordagem principal por **visão multimodal nativa Gemini**. Este documento é mantido como **histórico de arquitetura**; a proposta sucessora está em [ADR-003](./ADR-003-gemini-native-vision.md). Não usar esta ADR-002 para iniciar novas implementações de OCR local como pipeline padrão. O uso de fotos reais com Gemini segue bloqueado por gates de privacidade e segurança.
+
 # ADR-002 — Captura prioritária por foto
 
 - Estado: decisão de arquitetura; implementação e validação pendentes.

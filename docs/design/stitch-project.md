@@ -25,3 +25,21 @@ A criação do projeto e o envio da solicitação foram confirmados no navegador
 - Exportação e revisão visual antes de integração com o PWA.
 
 Não confundir artefatos de UI do Stitch com implementação clínica em produção.
+
+## Checkpoint de revisão — 31/10/2026
+
+O Stitch gerou e expôs na árvore de interface **8 telas editáveis**:
+1. Abertura e Login Google
+2. Dashboard Principal
+3. Registrar Glicemia
+4. Registrar Pressão e Pulso
+5. Histórico de Medições
+6. Gráficos e Tendências
+7. Assistente Vital IA
+8. Relatórios de Saúde
+
+**Faltam quatro**: 9. Compartilhamento, 10. Lembretes, 11. Perfil e Configurações, 12. Dashboard Modo Escuro.
+
+**Ajustes de cópia antes de aprovação**: remover afirmações de sincronização real com familiares/médicos, envio real via WhatsApp, links com validação biométrica e adesão medicamentosa como funcionalidade existente. Manter todos os registros e resultados de exemplo explicitamente sintéticos.
+
+O sistema visual "Serene Hearth Health" foi gerado a partir do repositório, com primária `#145C4D`. A geração e revisão completas permanecem pendentes.

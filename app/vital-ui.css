@@ -1,5 +1,5 @@
 /* Vital Família UI-001: isolated demo styles; previous demo remains at /demo. */
-.vf{--vf-bg:#f6f8f4;--vf-card:#fff;--vf-ink:#243b33;--vf-muted:#687c72;--vf-green:#145c4d;--vf-border:#e1e9e0;--vf-soft:#e9f3ec;--vf-accent:#b38a3e;min-height:100vh;background:var(--vf-bg);color:var(--vf-ink);font:15px/1.55 Arial,Helvetica,sans-serif}
+.vf{--vf-bg:#f6f8f4;--vf-card:#fff;--vf-ink:#243b33;--vf-muted:#52675b;--vf-green:#145c4d;--vf-border:#e1e9e0;--vf-soft:#e9f3ec;--vf-accent:#b38a3e;min-height:100vh;background:var(--vf-bg);color:var(--vf-ink);font:15px/1.55 Arial,Helvetica,sans-serif}
 .vf *{box-sizing:border-box}.vf button,.vf input,.vf select{font:inherit}.vf button{cursor:pointer;border:1px solid var(--vf-border);background:var(--vf-card);color:var(--vf-green);border-radius:12px;padding:11px 15px;font-weight:600;min-height:44px}
 .vf button:hover{background:var(--vf-soft)}.vf button:disabled{opacity:.58;cursor:not-allowed}.vf button:focus-visible,.vf a:focus-visible,.vf input:focus-visible,.vf select:focus-visible{outline:3px solid #c28e33;outline-offset:3px}
 .vf p{color:var(--vf-muted);line-height:1.6}.vf h1,.vf h2,.vf strong{color:var(--vf-ink)}.vf h1{font-size:clamp(26px,3vw,35px);font-weight:700;letter-spacing:-.7px;margin:9px 0}.vf h2{font-size:18px;margin:0}.vf a{color:var(--vf-green)}
@@ -9,7 +9,7 @@
 .vf-brand{display:flex;align-items:center;gap:10px;border:0!important;padding:4px 5px!important;font-size:23px;letter-spacing:-1px;text-align:left;min-height:52px!important}
 .vf-brand>span{background:var(--vf-green);color:#fff;font-size:27px;line-height:1;padding:12px;border-radius:15px}.vf-brand strong{color:var(--vf-green)}.vf-brand em{font-weight:400;font-style:normal}
 .vf-nav-label,.vf-eyebrow{font-size:11px;letter-spacing:1.2px;font-weight:700;color:var(--vf-muted)}.vf-nav-label{margin:28px 11px 14px}
-.vf-sidebar nav{display:flex;flex-direction:column;gap:3px}.vf-sidebar nav button{border:0;background:transparent;text-align:left;width:100%;color:var(--vf-muted);display:flex;align-items:center;gap:12px;padding:11px 12px;font-size:13px;border-radius:11px;min-height:43px}
+.vf-sidebar nav{display:flex;flex-direction:column;gap:3px}.vf-sidebar nav button{border:0;background:transparent;text-align:left;width:100%;color:var(--vf-muted);display:flex;align-items:center;gap:12px;padding:11px 12px;font-size:13px;border-radius:11px;min-height:44px}
 .vf-sidebar nav button>span{font-size:19px;color:var(--vf-green);width:22px;text-align:center}.vf-sidebar nav button:hover,.vf-sidebar nav button.vf-active{background:var(--vf-soft);color:var(--vf-green)}.vf-sidebar nav button.vf-active{font-weight:800}
 .vf-side-note{padding:18px;margin:auto 8px 0;background:var(--vf-soft);border-radius:14px;font-size:13px}.vf-side-note p{margin:6px 0 0}
 .vf-main-wrap{min-width:0;flex:1;display:flex;flex-direction:column}.vf-topbar{height:85px;display:flex;align-items:center;justify-content:space-between;gap:15px;padding:0 32px;border-bottom:1px solid var(--vf-border)}

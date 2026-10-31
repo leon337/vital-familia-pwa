@@ -1,6 +1,6 @@
 'use client';
 
-import {useMemo, useState, type FormEvent, type ReactNode} from 'react';
+import {useEffect, useMemo, useState, type FormEvent, type ReactNode} from 'react';
 import {csv, measurementSchema, syntheticRecords, type Measurement} from '@/lib/domain';
 import {VITAL_SCREENS, VITAL_DEMO_NOTICE, type VitalScreen} from '@/lib/vital-ui';
 
@@ -34,6 +34,7 @@ export default function VitalStudio(){
   const [caregiverView,setCaregiverView]=useState(false);
   const [reminders,setReminders]=useState(initialReminders);
   const [message,setMessage]=useState('');
+  useEffect(()=>{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});},[]);
   const glucose=useMemo(()=>records.filter(r=>r.kind==='glucose').at(-1),[records]);
   const pressure=useMemo(()=>records.filter(r=>r.kind==='pressure').at(-1),[records]);
   const history=useMemo(()=>records.filter(r=>historyKind==='all'||r.kind===historyKind).toSorted((a,b)=>b.measuredAt.localeCompare(a.measuredAt)),[records,historyKind]);

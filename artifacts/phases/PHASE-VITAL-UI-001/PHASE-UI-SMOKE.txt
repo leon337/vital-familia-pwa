@@ -1,0 +1,6 @@
+SMOKE EM NAVEGADOR: NÃO EXECUTADO.
+Motivo: ainda não houve preview/deploy e as orientações F02 recomendam CI cloud, sem build/testes pesados no notebook.
+NEXT BUILD NO RUNNER GITHUB: PASS, run 41251403998, código SHA 6de6ff5. Não é equivalente a smoke E2E.
+Pendente: 390x844 (mobile), 1366x768 (desktop), navegação de 12 telas, /demo, inputs e CSV, modo escuro, navegação por teclado, contraste e leitor de tela.
+Pendente: confirmar nenhuma requisição de rede com valores de saúde real.
+Risco adicional: auditoria npm prod encontrou vulnerabilidade crítica; NO-GO para merge ou deploy público.

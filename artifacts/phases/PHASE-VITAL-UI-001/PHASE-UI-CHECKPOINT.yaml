@@ -1,0 +1,21 @@
+mission_id: VITAL-UI-001
+phase_id: PHASE-VITAL-UI-001
+risk_class: C
+human_authority: LEANDRO
+orchestrator: MESTRE
+internal_gate: LEO_NOT_EXECUTED
+state: BLOQUEADO_POR_RISCO
+source_repo: https://github.com/leon337/vital-familia-pwa
+source_design: https://stitch.withgoogle.com/u/2/projects/10079289154118155401
+implementation_pr: https://github.com/leon337/vital-familia-pwa/pull/28
+implementation_branch: feat/vital-ui-001-demo-20261031
+validated_code_sha: 6de6ff55cc1deeba9b6dad2359fb8d4b4ef988a2
+ci_run: https://github.com/leon337/vital-familia-pwa/actions/runs/41251403998
+quality_tests: PASS
+production_dependency_audit: FAIL_CRITICAL
+security_issue: https://github.com/leon337/vital-familia-pwa/issues/17
+clinical_use: NO_GO
+merge: NOT_AUTHORIZED
+deployment: NOT_EXECUTED
+external_independent_audit: NOT_EXECUTED
+next_action: remediar cadeia Better Auth em frente F02; repetir CI do SHA final; smoke mobile e auditoria independente; gate LEO

@@ -1,0 +1,9 @@
+CI exato: https://github.com/leon337/vital-familia-pwa/actions/runs/41251403998
+HEAD de código: 6de6ff55cc1deeba9b6dad2359fb8d4b4ef988a2
+Resultado: npm ci, ESLint, TypeScript, Vitest e Next build aprovados.
+Vitest: 3 arquivos de teste, 14 testes aprovados, sem falhas.
+npm audit prod: FALHA com 9 vulnerabilidades (8 baixas, 1 crítica).
+Cadeia Better Auth/Neon: GHSA-44jh-23m7-hpcf no @better-auth/drizzle-adapter, e deepmerge GHSA-gcqx-w48m-w2h4. O runner recomendou --force, que NÃO foi executado.
+Problema acompanhado por https://github.com/leon337/vital-familia-pwa/issues/17.
+Runs anteriores: 41251187723 e 41251282430, falhas por assertivas textuais de teste; corrigidos sem mudanças na UI, confirmados no run final.
+Diferencial: não foi executada ferramenta de browser E2E ou auditoria externa de acessibilidade. Proibido afirmar que já aconteceu.

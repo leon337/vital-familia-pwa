@@ -1,0 +1,8 @@
+CI do código SHA 6de6ff55cc1deeba9b6dad2359fb8d4b4ef988a2:
+https://github.com/leon337/vital-familia-pwa/actions/runs/41251403998
+npm ci: PASS; ESLint: PASS; TypeScript: PASS; Vitest: PASS (14/14 testes); Build Next.js: PASS.
+npm audit --omit=dev --audit-level=high: FAIL — 9 vulnerabilidades (8 baixas, 1 crítica) em dependências transitivas Better Auth/Neon e deepmerge.
+As vulnerabilidades são da cadeia de dependências existente, tratadas no bloqueio F02 #17. Não executar --force nem suprimir auditoria.
+Verificação local leve: git diff --cached --check PASS. Compilação/testes pesados não foram executados no notebook.
+Browser E2E, acessibilidade com leitor de tela, contraste e smoke em celular: NÃO EXECUTADOS.
+RESULTADO DA FASE: NO-GO para merge/deploy e dados de saúde reais. PR #28 permanece DRAFT.
